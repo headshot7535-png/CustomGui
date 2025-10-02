@@ -48,7 +48,6 @@ function CustomGui:CreateWindow(props)
     title.TextSize = 22
     title.Parent = topBar
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Padding = Enum.TextXAlignment.Left
     title.TextWrapped = true
 
     local closeBtn = Instance.new("TextButton")
@@ -91,24 +90,87 @@ function CustomGui:CreateWindow(props)
         end
     end)
 
-    -- Scrollable content
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Name = "Scroll"
-    scroll.Size = UDim2.new(1, 0, 1, -40)
-    scroll.Position = UDim2.new(0, 0, 0, 40)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 800)
-    scroll.ScrollBarThickness = 10
-    scroll.BackgroundTransparency = 1
-    scroll.Parent = mainFrame
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    -- Tab bar
+    local tabBar = Instance.new("Frame")
+    tabBar.Name = "TabBar"
+    tabBar.Size = UDim2.new(1, 0, 0, 38)
+    tabBar.Position = UDim2.new(0, 0, 0, 40)
+    tabBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    tabBar.Parent = mainFrame
+    local tabCorner = Instance.new("UICorner")
+    tabCorner.CornerRadius = UDim.new(0, 12)
+    tabCorner.Parent = tabBar
 
-    local layout = Instance.new("UIListLayout")
-    layout.Parent = scroll
-    layout.Padding = UDim.new(0, 18)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    local tabLayout = Instance.new("UIListLayout")
+    tabLayout.Parent = tabBar
+    tabLayout.FillDirection = Enum.FillDirection.Horizontal
+    tabLayout.Padding = UDim.new(0, 8)
+    tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    return scroll
+    -- Tabs storage
+    local tabs = {}
+    local tabContents = {}
+    local activeTab = nil
+
+    function CustomGui:MakeTab(tabProps)
+        local tabBtn = Instance.new("TextButton")
+        tabBtn.Text = tabProps.Name or "Tab"
+        tabBtn.Size = UDim2.new(0, 120, 1, -8)
+        tabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        tabBtn.TextColor3 = Color3.fromRGB(220,220,220)
+        tabBtn.Font = Enum.Font.GothamBold
+        tabBtn.TextSize = 18
+        tabBtn.Parent = tabBar
+        tabBtn.AutoButtonColor = true
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 8)
+        btnCorner.Parent = tabBtn
+
+        local tabContent = Instance.new("ScrollingFrame")
+        tabContent.Name = tabProps.Name .. "_Content"
+        tabContent.Size = UDim2.new(1, 0, 1, -78)
+        tabContent.Position = UDim2.new(0, 0, 0, 78)
+        tabContent.CanvasSize = UDim2.new(0, 0, 0, 800)
+        tabContent.ScrollBarThickness = 10
+        tabContent.BackgroundTransparency = 1
+        tabContent.Parent = mainFrame
+        tabContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        tabContent.ScrollingDirection = Enum.ScrollingDirection.Y
+        tabContent.Visible = false
+
+        local layout = Instance.new("UIListLayout")
+        layout.Parent = tabContent
+        layout.Padding = UDim.new(0, 18)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        tabs[#tabs+1] = tabBtn
+        tabContents[#tabContents+1] = tabContent
+
+        tabBtn.MouseButton1Click:Connect(function()
+            for i, t in ipairs(tabContents) do
+                t.Visible = false
+                tabs[i].BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            end
+            tabContent.Visible = true
+            tabBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+            activeTab = tabContent
+        end)
+
+        if #tabs == 1 then
+            tabBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+            tabContent.Visible = true
+            activeTab = tabContent
+        end
+
+        return tabContent
+    end
+
+    -- Return window object with tab creation
+    local windowObj = {}
+    function windowObj:MakeTab(tabProps)
+        return CustomGui:MakeTab(tabProps)
+    end
+    return windowObj
 end
 
 function CustomGui:CreateTab(parent, props)
