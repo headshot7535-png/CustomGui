@@ -4,63 +4,102 @@
 
 local CustomGui = {}
 
--- Create a new window
 function CustomGui:CreateWindow(props)
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = props.Name or "CustomWindow"
     screenGui.ResetOnSpawn = false
     screenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-    return screenGui
+
+    -- Scrollable main frame
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
+    mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.Parent = screenGui
+    mainFrame.ClipsDescendants = true
+    mainFrame.AnchorPoint = Vector2.new(0,0)
+    mainFrame.ZIndex = 1
+
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 16)
+    uiCorner.Parent = mainFrame
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name = "Scroll"
+    scroll.Size = UDim2.new(1, 0, 1, 0)
+    scroll.Position = UDim2.new(0, 0, 0, 0)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 800)
+    scroll.ScrollBarThickness = 10
+    scroll.BackgroundTransparency = 1
+    scroll.Parent = mainFrame
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scroll
+    layout.Padding = UDim.new(0, 12)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    return scroll
 end
 
--- Create a tab (just a Frame for simplicity)
 function CustomGui:CreateTab(parent, props)
-    local tabFrame = Instance.new("Frame")
-    tabFrame.Name = props.Name or "Tab"
-    tabFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
-    tabFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-    tabFrame.BackgroundTransparency = 0.2
-    tabFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    tabFrame.Parent = parent
-    return tabFrame
+    -- Just return parent (scroll) for simplicity, all controls go in scroll
+    return parent
 end
 
--- Add a section label
 function CustomGui:AddSection(parent, props)
+    local section = Instance.new("Frame")
+    section.Size = UDim2.new(0.98, 0, 0, 44)
+    section.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    section.BackgroundTransparency = 0.15
+    section.Parent = parent
+    section.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 12)
+    uiCorner.Parent = section
     local label = Instance.new("TextLabel")
     label.Text = props.Name or "Section"
-    label.Size = UDim2.new(1, 0, 0, 30)
+    label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
     label.TextColor3 = Color3.fromRGB(255,255,255)
-    label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 22
-    label.Parent = parent
-    return label
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 24
+    label.Parent = section
+    label.AnchorPoint = Vector2.new(0.5,0.5)
+    label.Position = UDim2.new(0.5,0,0.5,0)
+    return section
 end
 
--- Add a label
 function CustomGui:AddLabel(parent, text)
     local label = Instance.new("TextLabel")
     label.Text = text
-    label.Size = UDim2.new(1, 0, 0, 24)
+    label.Size = UDim2.new(0.98, 0, 0, 28)
     label.BackgroundTransparency = 1
     label.TextColor3 = Color3.fromRGB(200,200,200)
-    label.Font = Enum.Font.SourceSans
+    label.Font = Enum.Font.Gotham
     label.TextSize = 18
     label.Parent = parent
+    label.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
     return label
 end
 
--- Add a toggle button
 function CustomGui:AddToggle(parent, props)
     local button = Instance.new("TextButton")
     button.Text = props.Name or "Toggle"
-    button.Size = UDim2.new(1, 0, 0, 32)
+    button.Size = UDim2.new(0.98, 0, 0, 36)
     button.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
     button.TextColor3 = Color3.fromRGB(255,255,255)
-    button.Font = Enum.Font.SourceSansBold
+    button.Font = Enum.Font.GothamBold
     button.TextSize = 20
     button.Parent = parent
+    button.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = button
     local state = props.Default or false
     button.MouseButton1Click:Connect(function()
         state = not state
@@ -70,21 +109,24 @@ function CustomGui:AddToggle(parent, props)
     return button
 end
 
--- Add a slider
 function CustomGui:AddSlider(parent, props)
     local sliderFrame = Instance.new("Frame")
-    sliderFrame.Size = UDim2.new(1, 0, 0, 40)
+    sliderFrame.Size = UDim2.new(0.98, 0, 0, 44)
     sliderFrame.BackgroundTransparency = 1
     sliderFrame.Parent = parent
+    sliderFrame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
     local slider = Instance.new("TextButton")
-    slider.Size = UDim2.new(0.8, 0, 0, 32)
-    slider.Position = UDim2.new(0.1, 0, 0, 4)
+    slider.Size = UDim2.new(0.9, 0, 0, 36)
+    slider.Position = UDim2.new(0.05, 0, 0, 4)
     slider.BackgroundColor3 = Color3.fromRGB(100,100,255)
     slider.TextColor3 = Color3.fromRGB(255,255,255)
-    slider.Font = Enum.Font.SourceSans
+    slider.Font = Enum.Font.Gotham
     slider.TextSize = 18
     slider.Text = props.Name .. ": " .. tostring(props.Default or props.Min)
     slider.Parent = sliderFrame
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = slider
     local value = props.Default or props.Min
     slider.MouseButton1Click:Connect(function()
         value = value + (props.Increment or 0.1)
@@ -92,34 +134,41 @@ function CustomGui:AddSlider(parent, props)
         slider.Text = props.Name .. ": " .. string.format("%.2f", value)
         if props.Callback then props.Callback(value) end
     end)
-    return slider
+    return sliderFrame
 end
 
--- Add a multi-select dropdown
 function CustomGui:AddMultiDropdown(parent, props)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 40 + 24 * #props.Options)
-    frame.BackgroundTransparency = 1
+    frame.Size = UDim2.new(0.98, 0, 0, 44 + 32 * #props.Options)
+    frame.BackgroundColor3 = Color3.fromRGB(38,38,38)
+    frame.BackgroundTransparency = 0.18
     frame.Parent = parent
+    frame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = frame
     local label = Instance.new("TextLabel")
     label.Text = props.Name or "Dropdown"
-    label.Size = UDim2.new(1, 0, 0, 24)
+    label.Size = UDim2.new(1, 0, 0, 28)
     label.BackgroundTransparency = 1
     label.TextColor3 = Color3.fromRGB(255,255,255)
-    label.Font = Enum.Font.SourceSansBold
+    label.Font = Enum.Font.GothamBold
     label.TextSize = 18
     label.Parent = frame
     local selected = {}
     for i, option in ipairs(props.Options) do
         local optBtn = Instance.new("TextButton")
         optBtn.Text = option
-        optBtn.Size = UDim2.new(1, 0, 0, 24)
-        optBtn.Position = UDim2.new(0, 0, 0, 24 * i)
+        optBtn.Size = UDim2.new(0.96, 0, 0, 28)
+        optBtn.Position = UDim2.new(0.02, 0, 0, 28 + 32 * (i-1))
         optBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
         optBtn.TextColor3 = Color3.fromRGB(255,255,255)
-        optBtn.Font = Enum.Font.SourceSans
+        optBtn.Font = Enum.Font.Gotham
         optBtn.TextSize = 16
         optBtn.Parent = frame
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 6)
+        btnCorner.Parent = optBtn
         optBtn.MouseButton1Click:Connect(function()
             if table.find(selected, option) then
                 for idx, val in ipairs(selected) do
