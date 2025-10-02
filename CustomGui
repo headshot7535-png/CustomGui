@@ -10,7 +10,7 @@ function CustomGui:CreateWindow(props)
     screenGui.ResetOnSpawn = false
     screenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 
-    -- Scrollable main frame
+    -- Main frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
     mainFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
@@ -27,10 +27,75 @@ function CustomGui:CreateWindow(props)
     uiCorner.CornerRadius = UDim.new(0, 16)
     uiCorner.Parent = mainFrame
 
+    -- Top bar (draggable, closable)
+    local topBar = Instance.new("Frame")
+    topBar.Name = "TopBar"
+    topBar.Size = UDim2.new(1, 0, 0, 40)
+    topBar.Position = UDim2.new(0, 0, 0, 0)
+    topBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    topBar.Parent = mainFrame
+    local topCorner = Instance.new("UICorner")
+    topCorner.CornerRadius = UDim.new(0, 16)
+    topCorner.Parent = topBar
+
+    local title = Instance.new("TextLabel")
+    title.Text = props.Name or "CustomWindow"
+    title.Size = UDim2.new(1, -40, 1, 0)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.fromRGB(255,255,255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 22
+    title.Parent = topBar
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Padding = Enum.TextXAlignment.Left
+    title.TextWrapped = true
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Text = "✕"
+    closeBtn.Size = UDim2.new(0, 40, 1, 0)
+    closeBtn.Position = UDim2.new(1, -40, 0, 0)
+    closeBtn.BackgroundTransparency = 1
+    closeBtn.TextColor3 = Color3.fromRGB(255,80,80)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 28
+    closeBtn.Parent = topBar
+    closeBtn.ZIndex = 2
+    closeBtn.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+    end)
+
+    -- Dragging logic
+    local dragging, dragInput, dragStart, startPos
+    topBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+        end
+    end)
+    topBar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    game:GetService("UserInputService").InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    topBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    -- Scrollable content
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "Scroll"
-    scroll.Size = UDim2.new(1, 0, 1, 0)
-    scroll.Position = UDim2.new(0, 0, 0, 0)
+    scroll.Size = UDim2.new(1, 0, 1, -40)
+    scroll.Position = UDim2.new(0, 0, 0, 40)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 800)
     scroll.ScrollBarThickness = 10
     scroll.BackgroundTransparency = 1
@@ -40,7 +105,7 @@ function CustomGui:CreateWindow(props)
 
     local layout = Instance.new("UIListLayout")
     layout.Parent = scroll
-    layout.Padding = UDim.new(0, 12)
+    layout.Padding = UDim.new(0, 18)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
 
     return scroll
