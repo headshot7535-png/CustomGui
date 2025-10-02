@@ -1,0 +1,139 @@
+-- CustomGui.lua
+-- Simple Roblox GUI library supporting mobile and multi-select dropdowns
+-- Usage: require(path_to_CustomGui)
+
+local CustomGui = {}
+
+-- Create a new window
+function CustomGui:CreateWindow(props)
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = props.Name or "CustomWindow"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    return screenGui
+end
+
+-- Create a tab (just a Frame for simplicity)
+function CustomGui:CreateTab(parent, props)
+    local tabFrame = Instance.new("Frame")
+    tabFrame.Name = props.Name or "Tab"
+    tabFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
+    tabFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+    tabFrame.BackgroundTransparency = 0.2
+    tabFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    tabFrame.Parent = parent
+    return tabFrame
+end
+
+-- Add a section label
+function CustomGui:AddSection(parent, props)
+    local label = Instance.new("TextLabel")
+    label.Text = props.Name or "Section"
+    label.Size = UDim2.new(1, 0, 0, 30)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(255,255,255)
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 22
+    label.Parent = parent
+    return label
+end
+
+-- Add a label
+function CustomGui:AddLabel(parent, text)
+    local label = Instance.new("TextLabel")
+    label.Text = text
+    label.Size = UDim2.new(1, 0, 0, 24)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(200,200,200)
+    label.Font = Enum.Font.SourceSans
+    label.TextSize = 18
+    label.Parent = parent
+    return label
+end
+
+-- Add a toggle button
+function CustomGui:AddToggle(parent, props)
+    local button = Instance.new("TextButton")
+    button.Text = props.Name or "Toggle"
+    button.Size = UDim2.new(1, 0, 0, 32)
+    button.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+    button.TextColor3 = Color3.fromRGB(255,255,255)
+    button.Font = Enum.Font.SourceSansBold
+    button.TextSize = 20
+    button.Parent = parent
+    local state = props.Default or false
+    button.MouseButton1Click:Connect(function()
+        state = not state
+        button.BackgroundColor3 = state and Color3.fromRGB(60, 180, 75) or Color3.fromRGB(180, 60, 60)
+        if props.Callback then props.Callback(state) end
+    end)
+    return button
+end
+
+-- Add a slider
+function CustomGui:AddSlider(parent, props)
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Size = UDim2.new(1, 0, 0, 40)
+    sliderFrame.BackgroundTransparency = 1
+    sliderFrame.Parent = parent
+    local slider = Instance.new("TextButton")
+    slider.Size = UDim2.new(0.8, 0, 0, 32)
+    slider.Position = UDim2.new(0.1, 0, 0, 4)
+    slider.BackgroundColor3 = Color3.fromRGB(100,100,255)
+    slider.TextColor3 = Color3.fromRGB(255,255,255)
+    slider.Font = Enum.Font.SourceSans
+    slider.TextSize = 18
+    slider.Text = props.Name .. ": " .. tostring(props.Default or props.Min)
+    slider.Parent = sliderFrame
+    local value = props.Default or props.Min
+    slider.MouseButton1Click:Connect(function()
+        value = value + (props.Increment or 0.1)
+        if value > props.Max then value = props.Min end
+        slider.Text = props.Name .. ": " .. string.format("%.2f", value)
+        if props.Callback then props.Callback(value) end
+    end)
+    return slider
+end
+
+-- Add a multi-select dropdown
+function CustomGui:AddMultiDropdown(parent, props)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 0, 40 + 24 * #props.Options)
+    frame.BackgroundTransparency = 1
+    frame.Parent = parent
+    local label = Instance.new("TextLabel")
+    label.Text = props.Name or "Dropdown"
+    label.Size = UDim2.new(1, 0, 0, 24)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(255,255,255)
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 18
+    label.Parent = frame
+    local selected = {}
+    for i, option in ipairs(props.Options) do
+        local optBtn = Instance.new("TextButton")
+        optBtn.Text = option
+        optBtn.Size = UDim2.new(1, 0, 0, 24)
+        optBtn.Position = UDim2.new(0, 0, 0, 24 * i)
+        optBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+        optBtn.TextColor3 = Color3.fromRGB(255,255,255)
+        optBtn.Font = Enum.Font.SourceSans
+        optBtn.TextSize = 16
+        optBtn.Parent = frame
+        optBtn.MouseButton1Click:Connect(function()
+            if table.find(selected, option) then
+                for idx, val in ipairs(selected) do
+                    if val == option then table.remove(selected, idx) break end
+                end
+                optBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+            else
+                table.insert(selected, option)
+                optBtn.BackgroundColor3 = Color3.fromRGB(60,180,75)
+            end
+            if props.Callback then props.Callback(selected) end
+        end)
+    end
+    return frame
+end
+
+return CustomGui
