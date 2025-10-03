@@ -270,6 +270,9 @@ function CustomGui:AddToggle(parent, props)
     uiCorner.CornerRadius = UDim.new(0, 8)
     uiCorner.Parent = button
     local state = props.Default or false
+    -- Immediately call the callback with the default value
+    button.BackgroundColor3 = state and Color3.fromRGB(60, 180, 75) or Color3.fromRGB(180, 60, 60)
+    if props.Callback then props.Callback(state) end
     button.MouseButton1Click:Connect(function()
         state = not state
         button.BackgroundColor3 = state and Color3.fromRGB(60, 180, 75) or Color3.fromRGB(180, 60, 60)
