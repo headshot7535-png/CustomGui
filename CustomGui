@@ -51,13 +51,13 @@ function CustomGui:CreateWindow(props)
     title.TextWrapped = true
 
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Text = "✕"
+    closeBtn.Text = "❌"
     closeBtn.Size = UDim2.new(0, 36, 1, 0)
     closeBtn.Position = UDim2.new(1, -36, 0, 0)
     closeBtn.BackgroundTransparency = 1
-    closeBtn.TextColor3 = Color3.fromRGB(255,80,80)
+    closeBtn.TextColor3 = Color3.fromRGB(255,0,0)
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 24
+    closeBtn.TextSize = 28
     closeBtn.Parent = topBar
     closeBtn.ZIndex = 2
 
@@ -89,6 +89,12 @@ function CustomGui:CreateWindow(props)
     reopenCorner.Parent = reopenBtn
 
     closeBtn.MouseButton1Click:Connect(function()
+        -- Stop all running threads (best effort)
+        for _, t in ipairs(getgc(true)) do
+            if typeof(t) == "thread" and coroutine.status(t) == "suspended" then
+                coroutine.close(t)
+            end
+        end
         screenGui:Destroy()
     end)
     minimizeBtn.MouseButton1Click:Connect(function()
@@ -278,25 +284,74 @@ function CustomGui:AddSlider(parent, props)
     sliderFrame.BackgroundTransparency = 1
     sliderFrame.Parent = parent
     sliderFrame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
-    local slider = Instance.new("TextButton")
-    slider.Size = UDim2.new(0.9, 0, 0, 36)
-    slider.Position = UDim2.new(0.05, 0, 0, 4)
-    slider.BackgroundColor3 = Color3.fromRGB(100,100,255)
-    slider.TextColor3 = Color3.fromRGB(255,255,255)
-    slider.Font = Enum.Font.Gotham
-    slider.TextSize = 18
-    slider.Text = props.Name .. ": " .. tostring(props.Default or props.Min)
-    slider.Parent = sliderFrame
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 8)
-    uiCorner.Parent = slider
+
+    local label = Instance.new("TextLabel")
+    label.Text = props.Name .. ": " .. tostring(props.Default or props.Min)
+    label.Size = UDim2.new(1, 0, 0, 18)
+    label.Position = UDim2.new(0, 0, 0, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(200,200,200)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 16
+    label.Parent = sliderFrame
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(0.92, 0, 0, 8)
+    bar.Position = UDim2.new(0.04, 0, 0, 26)
+    bar.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    bar.Parent = sliderFrame
+    local barCorner = Instance.new("UICorner")
+    barCorner.CornerRadius = UDim.new(0, 4)
+    barCorner.Parent = bar
+
+    local thumb = Instance.new("Frame")
+    thumb.Size = UDim2.new(0, 18, 0, 18)
+    thumb.Position = UDim2.new(0, 0, 0, -5)
+    thumb.BackgroundColor3 = Color3.fromRGB(100,100,255)
+    thumb.Parent = bar
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(0, 9)
+    thumbCorner.Parent = thumb
+
     local value = props.Default or props.Min
-    slider.MouseButton1Click:Connect(function()
-        value = value + (props.Increment or 0.1)
-        if value > props.Max then value = props.Min end
-        slider.Text = props.Name .. ": " .. string.format("%.2f", value)
+    local min, max = props.Min, props.Max
+    local dragging = false
+
+    local function setValue(newValue)
+        value = math.clamp(newValue, min, max)
+        local percent = (value - min) / (max - min)
+        thumb.Position = UDim2.new(percent, -9, 0, -5)
+        label.Text = props.Name .. ": " .. string.format("%.2f", value)
         if props.Callback then props.Callback(value) end
+    end
+    setValue(value)
+
+    thumb.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+        end
     end)
+    thumb.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            local x = input.Position.X - bar.AbsolutePosition.X
+            local percent = math.clamp(x / bar.AbsoluteSize.X, 0, 1)
+            setValue(min + percent * (max - min))
+        end
+    end)
+    game:GetService("UserInputService").InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local x = input.Position.X - bar.AbsolutePosition.X
+            local percent = math.clamp(x / bar.AbsoluteSize.X, 0, 1)
+            setValue(min + percent * (max - min))
+        end
+    end)
+
     return sliderFrame
 end
 
