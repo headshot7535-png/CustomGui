@@ -13,55 +13,91 @@ function CustomGui:CreateWindow(props)
     -- Main frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
-    mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    mainFrame.Size = UDim2.new(0.7, 0, 0.7, 0)
+    mainFrame.Position = UDim2.new(0.15, 0, 0.15, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22) -- Carbon black
     mainFrame.BorderSizePixel = 0
-    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.BackgroundTransparency = 0.05
     mainFrame.Parent = screenGui
     mainFrame.ClipsDescendants = true
     mainFrame.AnchorPoint = Vector2.new(0,0)
     mainFrame.ZIndex = 1
 
     local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 16)
+    uiCorner.CornerRadius = UDim.new(0, 18)
     uiCorner.Parent = mainFrame
 
     -- Top bar (draggable, closable)
     local topBar = Instance.new("Frame")
     topBar.Name = "TopBar"
-    topBar.Size = UDim2.new(1, 0, 0, 40)
+    topBar.Size = UDim2.new(1, 0, 0, 36)
     topBar.Position = UDim2.new(0, 0, 0, 0)
-    topBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    topBar.BackgroundColor3 = Color3.fromRGB(32, 32, 32) -- Carbon gray
     topBar.Parent = mainFrame
     local topCorner = Instance.new("UICorner")
-    topCorner.CornerRadius = UDim.new(0, 16)
+    topCorner.CornerRadius = UDim.new(0, 18)
     topCorner.Parent = topBar
 
     local title = Instance.new("TextLabel")
     title.Text = props.Name or "CustomWindow"
-    title.Size = UDim2.new(1, -40, 1, 0)
+    title.Size = UDim2.new(1, -80, 1, 0)
     title.Position = UDim2.new(0, 0, 0, 0)
     title.BackgroundTransparency = 1
-    title.TextColor3 = Color3.fromRGB(255,255,255)
+    title.TextColor3 = Color3.fromRGB(220,220,220)
     title.Font = Enum.Font.GothamBold
-    title.TextSize = 22
+    title.TextSize = 20
     title.Parent = topBar
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextWrapped = true
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Text = "✕"
-    closeBtn.Size = UDim2.new(0, 40, 1, 0)
-    closeBtn.Position = UDim2.new(1, -40, 0, 0)
+    closeBtn.Size = UDim2.new(0, 36, 1, 0)
+    closeBtn.Position = UDim2.new(1, -36, 0, 0)
     closeBtn.BackgroundTransparency = 1
     closeBtn.TextColor3 = Color3.fromRGB(255,80,80)
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 28
+    closeBtn.TextSize = 24
     closeBtn.Parent = topBar
     closeBtn.ZIndex = 2
+
+    -- Minimize button
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Text = "_"
+    minimizeBtn.Size = UDim2.new(0, 36, 1, 0)
+    minimizeBtn.Position = UDim2.new(1, -72, 0, 0)
+    minimizeBtn.BackgroundTransparency = 1
+    minimizeBtn.TextColor3 = Color3.fromRGB(180,180,180)
+    minimizeBtn.Font = Enum.Font.GothamBold
+    minimizeBtn.TextSize = 24
+    minimizeBtn.Parent = topBar
+    minimizeBtn.ZIndex = 2
+
+    -- Floating reopen button
+    local reopenBtn = Instance.new("TextButton")
+    reopenBtn.Text = "☰"
+    reopenBtn.Size = UDim2.new(0, 44, 0, 44)
+    reopenBtn.Position = UDim2.new(0, 14, 0, 14)
+    reopenBtn.BackgroundColor3 = Color3.fromRGB(32,32,32)
+    reopenBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    reopenBtn.Font = Enum.Font.GothamBold
+    reopenBtn.TextSize = 28
+    reopenBtn.Visible = false
+    reopenBtn.Parent = screenGui
+    local reopenCorner = Instance.new("UICorner")
+    reopenCorner.CornerRadius = UDim.new(0, 14)
+    reopenCorner.Parent = reopenBtn
+
     closeBtn.MouseButton1Click:Connect(function()
         screenGui:Destroy()
+    end)
+    minimizeBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = false
+        reopenBtn.Visible = true
+    end)
+    reopenBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = true
+        reopenBtn.Visible = false
     end)
 
     -- Dragging logic
