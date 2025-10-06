@@ -327,7 +327,11 @@ function CustomGui:CreateWindow(props)
     end
 
     function windowObj:Destroy()
+        -- Ensure everything is stopped and cleaned
+        self:StopAll()
         if self._closeCb then pcall(self._closeCb) end
+        if self._cmdGui then pcall(function() self._cmdGui:Destroy() end); self._cmdGui = nil; self._cmdBox = nil end
+        if self._antiAFKGui then pcall(function() self._antiAFKGui:Destroy() end); self._antiAFKGui = nil; self._antiAFKDot = nil end
         if self.ScreenGui then self.ScreenGui:Destroy() end
     end
 
@@ -366,6 +370,12 @@ function CustomGui:CreateWindow(props)
         end
         -- Disable Anti-AFK if running
         self:EnableAntiAFK(false)
+        -- Utilities cleanup: noclip, click TP
+        if self._noclipConn then pcall(function() self._noclipConn:Disconnect() end); self._noclipConn = nil end
+        if self._clickTPConn then pcall(function() self._clickTPConn:Disconnect() end); self._clickTPConn = nil end
+        -- ESP cleanup: set flags false and call toggle to perform teardown
+        if self._esp then self._esp.names=false; self._esp.highlight=false; self._esp.tracers=false end
+        pcall(function() CustomGui:_toggleESP(self) end)
     end
 
     -- Native Anti-AFK with indicator dot (top-left)
@@ -537,10 +547,8 @@ function CustomGui:CreateWindow(props)
         end)
         reopenBtn.InputChanged:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                -- Keep the active touch reference up to date
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    rDragInput = input
-                end
+                -- Keep the active touch reference up to date (best-effort)
+                if input.UserInputType == Enum.UserInputType.Touch then rDragInput = input end
             end
         end)
         UIS.InputChanged:Connect(function(input)
@@ -552,27 +560,32 @@ function CustomGui:CreateWindow(props)
                 local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
                 reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
             elseif input.UserInputType == Enum.UserInputType.Touch then
-                -- For touch, only follow the original finger (if tracked), else accept the first touch move
-                if (rDragInput == nil) or (input == rDragInput) then
-                    local delta = input.Position - rDragStart
-                    movedMag = math.max(movedMag, delta.Magnitude)
-                    local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
-                    reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
-                end
+                -- For touch, accept any movement while dragging (robust across platforms)
+                local delta = input.Position - rDragStart
+                movedMag = math.max(movedMag, delta.Magnitude)
+                local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
+                reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
             end
         end)
+        local function finishIconDragOrClick()
+            if not rDragging then return end
+            rDragging = false
+            if movedMag > 6 then
+                saveReopenPos()
+            else
+                mainFrame.Visible = true
+                reopenBtn.Visible = false
+                dragShield.Visible = false
+            end
+        end
         reopenBtn.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                if rDragging then
-                    rDragging = false
-                    if movedMag > 6 then
-                        saveReopenPos()
-                        return
-                    else
-                        mainFrame.Visible = true
-                        reopenBtn.Visible = false
-                    end
-                end
+                finishIconDragOrClick()
+            end
+        end)
+        UIS.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                finishIconDragOrClick()
             end
         end)
     end
@@ -585,7 +598,9 @@ function CustomGui:CreateWindow(props)
     end
 
     closeBtn.MouseButton1Click:Connect(function()
-        windowObj:Hide()
+        -- X should completely stop and destroy the GUI
+        windowObj:StopAll()
+        windowObj:Destroy()
     end)
     minimizeBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
