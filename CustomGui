@@ -248,6 +248,79 @@ function CustomGui:CreateWindow(props)
     local reopenCorner = Instance.new("UICorner")
     reopenCorner.CornerRadius = UDim.new(0, 14)
     reopenCorner.Parent = reopenBtn
+    -- Draggable reopen button with persisted position
+    windowObj._uiStore = windowObj:CreateStore("ui")
+    local function applySavedReopenPos()
+        local saved = windowObj._uiStore and windowObj._uiStore:Get("reopenPos")
+        if type(saved) == "table" and typeof(saved.sx) == "number" and typeof(saved.sy) == "number" then
+            local scr = screenGui.AbsoluteSize
+            local btn = reopenBtn.AbsoluteSize
+            local x = math.clamp(saved.sx, 0, 1) * math.max(0, scr.X - btn.X)
+            local y = math.clamp(saved.sy, 0, 1) * math.max(0, scr.Y - btn.Y)
+            reopenBtn.Position = UDim2.new(0, math.floor(x + 0.5), 0, math.floor(y + 0.5))
+        end
+    end
+    task.defer(applySavedReopenPos)
+    screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applySavedReopenPos)
+
+    local rDragging, rDragInput, rDragStart, rStartPos
+    local movedMag = 0
+    local function clampReopen(pos)
+        local scr = screenGui.AbsoluteSize
+        local btn = reopenBtn.AbsoluteSize
+        local x = math.clamp(pos.X, 0, math.max(0, scr.X - btn.X))
+        local y = math.clamp(pos.Y, 0, math.max(0, scr.Y - btn.Y))
+        return Vector2.new(x, y)
+    end
+    local function saveReopenPos()
+        if not windowObj._uiStore then return end
+        local scr = screenGui.AbsoluteSize
+        local btn = reopenBtn.AbsoluteSize
+        local pos = reopenBtn.AbsolutePosition
+        local denomX = math.max(1, scr.X - btn.X)
+        local denomY = math.max(1, scr.Y - btn.Y)
+        local sx = pos.X / denomX
+        local sy = pos.Y / denomY
+        windowObj._uiStore:Set("reopenPos", { sx = sx, sy = sy })
+    end
+    reopenBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            rDragging = true
+            rDragStart = input.Position
+            rStartPos = reopenBtn.AbsolutePosition
+            rDragInput = input
+            movedMag = 0
+        end
+    end)
+    reopenBtn.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            rDragInput = input
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if rDragging and input == rDragInput then
+            local delta = input.Position - rDragStart
+            movedMag = math.max(movedMag, delta.Magnitude)
+            local newAbs = clampReopen(Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y))
+            reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
+        end
+    end)
+    reopenBtn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if rDragging then
+                rDragging = false
+                if movedMag > 6 then
+                    -- treat as drag end; save and swallow click
+                    saveReopenPos()
+                    return
+                else
+                    -- treat as tap: reopen window
+                    mainFrame.Visible = true
+                    reopenBtn.Visible = false
+                end
+            end
+        end
+    end)
 
     -- Optional keybind to show/hide (RightShift default)
     local toggleKey = props.ToggleKey or Enum.KeyCode.RightShift
@@ -459,10 +532,7 @@ function CustomGui:CreateWindow(props)
         mainFrame.Visible = false
         reopenBtn.Visible = true
     end)
-    reopenBtn.MouseButton1Click:Connect(function()
-        mainFrame.Visible = true
-        reopenBtn.Visible = false
-    end)
+    -- MouseButton1Click is handled in InputEnded above to avoid triggering when dragging
 
     -- Dragging logic
     local dragging, dragInput, dragStart, startPos
