@@ -570,7 +570,9 @@ function CustomGui:CreateWindow(props)
         local function finishIconDragOrClick()
             if not rDragging then return end
             rDragging = false
-            if movedMag >= 2 then
+            if movedMag > 0 then
+                -- Clamp into view and save clamped position
+                ensureReopenVisible()
                 saveReopenPos()
             else
                 mainFrame.Visible = true
