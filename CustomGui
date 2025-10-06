@@ -451,12 +451,17 @@ function CustomGui:CreateWindow(props)
         windowObj._uiStore = windowObj:CreateStore("ui")
         local function applySavedReopenPos()
             local saved = windowObj._uiStore and windowObj._uiStore:Get("reopenPos")
-            if type(saved) == "table" and typeof(saved.sx) == "number" and typeof(saved.sy) == "number" then
-                local scr = screenGui.AbsoluteSize
-                local btn = reopenBtn.AbsoluteSize
-                local x = math.clamp(saved.sx, 0, 1) * math.max(0, scr.X - btn.X)
-                local y = math.clamp(saved.sy, 0, 1) * math.max(0, scr.Y - btn.Y)
-                reopenBtn.Position = UDim2.new(0, math.floor(x + 0.5), 0, math.floor(y + 0.5))
+            if type(saved) == "table" then
+                if typeof(saved.ox) == "number" and typeof(saved.oy) == "number" then
+                    reopenBtn.Position = UDim2.new(0, saved.ox, 0, saved.oy)
+                elseif typeof(saved.sx) == "number" and typeof(saved.sy) == "number" then
+                    -- Backward compatible with older normalized positions
+                    local scr = screenGui.AbsoluteSize
+                    local btn = reopenBtn.AbsoluteSize
+                    local x = saved.sx * math.max(0, scr.X - btn.X)
+                    local y = saved.sy * math.max(0, scr.Y - btn.Y)
+                    reopenBtn.Position = UDim2.new(0, math.floor(x + 0.5), 0, math.floor(y + 0.5))
+                end
             end
         end
         task.defer(applySavedReopenPos)
@@ -464,23 +469,11 @@ function CustomGui:CreateWindow(props)
 
         local rDragging, rDragInput, rDragStart, rStartPos
         local movedMag = 0
-        local function clampReopen(pos)
-            local scr = screenGui.AbsoluteSize
-            local btn = reopenBtn.AbsoluteSize
-            local x = math.clamp(pos.X, 0, math.max(0, scr.X - btn.X))
-            local y = math.clamp(pos.Y, 0, math.max(0, scr.Y - btn.Y))
-            return Vector2.new(x, y)
-        end
         local function saveReopenPos()
             if not windowObj._uiStore then return end
-            local scr = screenGui.AbsoluteSize
-            local btn = reopenBtn.AbsoluteSize
             local pos = reopenBtn.AbsolutePosition
-            local denomX = math.max(1, scr.X - btn.X)
-            local denomY = math.max(1, scr.Y - btn.Y)
-            local sx = pos.X / denomX
-            local sy = pos.Y / denomY
-            windowObj._uiStore:Set("reopenPos", { sx = sx, sy = sy })
+            -- Save raw pixel offsets for exact placement (no clamping)
+            windowObj._uiStore:Set("reopenPos", { ox = pos.X, oy = pos.Y })
         end
         reopenBtn.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -511,14 +504,14 @@ function CustomGui:CreateWindow(props)
                 local loc = UIS:GetMouseLocation()
                 local delta = Vector2.new(loc.X, loc.Y) - Vector2.new(rDragStart.X, rDragStart.Y)
                 movedMag = math.max(movedMag, delta.Magnitude)
-                local newAbs = clampReopen(Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y))
+                local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
                 reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
             elseif input.UserInputType == Enum.UserInputType.Touch then
                 -- For touch, only follow the original finger (if tracked), else accept the first touch move
                 if (rDragInput == nil) or (input == rDragInput) then
                     local delta = input.Position - rDragStart
                     movedMag = math.max(movedMag, delta.Magnitude)
-                    local newAbs = clampReopen(Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y))
+                    local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
                     reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
                 end
             end
@@ -582,29 +575,14 @@ function CustomGui:CreateWindow(props)
         if input.UserInputType == Enum.UserInputType.MouseMovement then
             local loc = UIS:GetMouseLocation()
             local delta = Vector2.new(loc.X, loc.Y) - Vector2.new(dragStart.X, dragStart.Y)
-            local scr = screenGui.AbsoluteSize
-            local mf = mainFrame.AbsoluteSize
-            -- Keep a small grab area visible, allow rest off-screen for free placement
-            local keep = 48
-            local minX = - (mf.X - keep)
-            local maxX = scr.X - keep
-            local minY = - (mf.Y - keep)
-            local maxY = scr.Y - keep
-            local newX = math.clamp(startAbs.X + delta.X, minX, maxX)
-            local newY = math.clamp(startAbs.Y + delta.Y, minY, maxY)
+            local newX = startAbs.X + delta.X
+            local newY = startAbs.Y + delta.Y
             mainFrame.Position = UDim2.new(0, newX, 0, newY)
         elseif input.UserInputType == Enum.UserInputType.Touch then
             if (dragInput == nil) or (input == dragInput) then
                 local delta = input.Position - dragStart
-                local scr = screenGui.AbsoluteSize
-                local mf = mainFrame.AbsoluteSize
-                local keep = 48
-                local minX = - (mf.X - keep)
-                local maxX = scr.X - keep
-                local minY = - (mf.Y - keep)
-                local maxY = scr.Y - keep
-                local newX = math.clamp(startAbs.X + delta.X, minX, maxX)
-                local newY = math.clamp(startAbs.Y + delta.Y, minY, maxY)
+                local newX = startAbs.X + delta.X
+                local newY = startAbs.Y + delta.Y
                 mainFrame.Position = UDim2.new(0, newX, 0, newY)
             end
         end
