@@ -584,16 +584,27 @@ function CustomGui:CreateWindow(props)
             local delta = Vector2.new(loc.X, loc.Y) - Vector2.new(dragStart.X, dragStart.Y)
             local scr = screenGui.AbsoluteSize
             local mf = mainFrame.AbsoluteSize
-            local newX = math.clamp(startAbs.X + delta.X, 0, math.max(0, scr.X - mf.X))
-            local newY = math.clamp(startAbs.Y + delta.Y, 0, math.max(0, scr.Y - mf.Y))
+            -- Keep a small grab area visible, allow rest off-screen for free placement
+            local keep = 48
+            local minX = - (mf.X - keep)
+            local maxX = scr.X - keep
+            local minY = - (mf.Y - keep)
+            local maxY = scr.Y - keep
+            local newX = math.clamp(startAbs.X + delta.X, minX, maxX)
+            local newY = math.clamp(startAbs.Y + delta.Y, minY, maxY)
             mainFrame.Position = UDim2.new(0, newX, 0, newY)
         elseif input.UserInputType == Enum.UserInputType.Touch then
             if (dragInput == nil) or (input == dragInput) then
                 local delta = input.Position - dragStart
                 local scr = screenGui.AbsoluteSize
                 local mf = mainFrame.AbsoluteSize
-                local newX = math.clamp(startAbs.X + delta.X, 0, math.max(0, scr.X - mf.X))
-                local newY = math.clamp(startAbs.Y + delta.Y, 0, math.max(0, scr.Y - mf.Y))
+                local keep = 48
+                local minX = - (mf.X - keep)
+                local maxX = scr.X - keep
+                local minY = - (mf.Y - keep)
+                local maxY = scr.Y - keep
+                local newX = math.clamp(startAbs.X + delta.X, minX, maxX)
+                local newY = math.clamp(startAbs.Y + delta.Y, minY, maxY)
                 mainFrame.Position = UDim2.new(0, newX, 0, newY)
             end
         end
