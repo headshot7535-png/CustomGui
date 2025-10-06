@@ -628,6 +628,7 @@ function CustomGui:AddGroup(parent, props)
     local group = Instance.new("Frame")
     group.Name = (props.Name or "Group") .. "_Group"
     group.Size = UDim2.new(0.98, 0, 0, 40)
+    group.AutomaticSize = Enum.AutomaticSize.Y
     group.BackgroundColor3 = theme.section
     group.BackgroundTransparency = 0.1
     group.Parent = parent
@@ -646,6 +647,7 @@ function CustomGui:AddGroup(parent, props)
     local content = Instance.new("Frame")
     content.Name = "Content"
     content.Size = UDim2.new(1, -8, 0, 0)
+    content.AutomaticSize = Enum.AutomaticSize.Y
     content.Position = UDim2.new(0, 4, 0, (density == "compact") and 32 or 38)
     content.BackgroundTransparency = 1
     content.Parent = group
@@ -654,21 +656,10 @@ function CustomGui:AddGroup(parent, props)
     list.Padding = UDim.new(0, (density == "compact") and 6 or 10)
     list.SortOrder = Enum.SortOrder.LayoutOrder
     local collapsed = false
-    local function updateSize()
-        local childrenH = 0
-        for _, c in ipairs(content:GetChildren()) do
-            if c:IsA("GuiObject") then childrenH += c.AbsoluteSize.Y + ((density == "compact") and 6 or 10) end
-        end
-        if #content:GetChildren() > 0 then childrenH -= ((density == "compact") and 6 or 10) end
-        group.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 34 or 40 + (collapsed and 0 or (childrenH + ((density == "compact") and 4 or 8))))
-    end
-    content.ChildAdded:Connect(updateSize)
-    content.ChildRemoved:Connect(updateSize)
     header.MouseButton1Click:Connect(function()
         collapsed = not collapsed
         header.Text = (props.Name or "Group") .. (collapsed and "  ▸" or "  ▾")
         content.Visible = not collapsed
-        updateSize()
     end)
     function group:GetContent() return content end
     return group
