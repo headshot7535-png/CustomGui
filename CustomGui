@@ -558,31 +558,20 @@ function CustomGui:CreateWindow(props)
                 local delta = Vector2.new(input.Position.X - rDragStart.X, input.Position.Y - rDragStart.Y)
                 movedMag = math.max(movedMag, delta.Magnitude)
                 local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
-                -- Clamp during drag to keep it visible
-                local scr = screenGui.AbsoluteSize
-                local btn = reopenBtn.AbsoluteSize
-                local clampedX = math.clamp(newAbs.X, -btn.X * 0.75, scr.X - btn.X * 0.25)
-                local clampedY = math.clamp(newAbs.Y, -btn.Y * 0.75, scr.Y - btn.Y * 0.25)
-                reopenBtn.Position = UDim2.new(0, clampedX, 0, clampedY)
+                reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
             elseif input.UserInputType == Enum.UserInputType.Touch then
                 -- For touch, accept any movement while dragging (robust across platforms)
                 local delta = input.Position - rDragStart
                 movedMag = math.max(movedMag, delta.Magnitude)
                 local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
-                -- Clamp during drag to keep it visible
-                local scr = screenGui.AbsoluteSize
-                local btn = reopenBtn.AbsoluteSize
-                local clampedX = math.clamp(newAbs.X, -btn.X * 0.75, scr.X - btn.X * 0.25)
-                local clampedY = math.clamp(newAbs.Y, -btn.Y * 0.75, scr.Y - btn.Y * 0.25)
-                reopenBtn.Position = UDim2.new(0, clampedX, 0, clampedY)
+                reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
             end
         end)
         local function finishIconDragOrClick()
             if not rDragging then return end
             rDragging = false
             if movedMag > 0 then
-                -- Ensure it's visible and save position
-                ensureReopenVisible()
+                -- Save position without clamping - allow anywhere
                 saveReopenPos()
                 -- Make absolutely sure it's visible
                 reopenBtn.Visible = true
