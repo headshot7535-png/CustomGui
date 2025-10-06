@@ -486,21 +486,40 @@ function CustomGui:CreateWindow(props)
                 rDragging = true
                 rDragStart = input.Position
                 rStartPos = reopenBtn.AbsolutePosition
-                rDragInput = input
+                -- Track the originating touch; for mouse we don't need to match a specific InputObject
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    rDragInput = input
+                else
+                    rDragInput = nil
+                end
                 movedMag = 0
             end
         end)
         reopenBtn.InputChanged:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                rDragInput = input
+                -- Keep the active touch reference up to date
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    rDragInput = input
+                end
             end
         end)
         UIS.InputChanged:Connect(function(input)
-            if rDragging and input == rDragInput then
-                local delta = input.Position - rDragStart
+            if not rDragging then return end
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                -- Use global mouse location so dragging continues off the button
+                local loc = UIS:GetMouseLocation()
+                local delta = Vector2.new(loc.X, loc.Y) - Vector2.new(rDragStart.X, rDragStart.Y)
                 movedMag = math.max(movedMag, delta.Magnitude)
                 local newAbs = clampReopen(Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y))
                 reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
+            elseif input.UserInputType == Enum.UserInputType.Touch then
+                -- For touch, only follow the original finger (if tracked), else accept the first touch move
+                if (rDragInput == nil) or (input == rDragInput) then
+                    local delta = input.Position - rDragStart
+                    movedMag = math.max(movedMag, delta.Magnitude)
+                    local newAbs = clampReopen(Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y))
+                    reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
+                end
             end
         end)
         reopenBtn.InputEnded:Connect(function(input)
@@ -542,17 +561,32 @@ function CustomGui:CreateWindow(props)
             dragging = true
             dragStart = input.Position
             startPos = mainFrame.Position
+            -- For touch, remember the finger; for mouse, we'll use global mouse movement
+            if input.UserInputType == Enum.UserInputType.Touch then
+                dragInput = input
+            else
+                dragInput = nil
+            end
         end
     end)
     topBar.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
+            if input.UserInputType == Enum.UserInputType.Touch then
+                dragInput = input
+            end
         end
     end)
     game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if dragging and input == dragInput then
-            local delta = input.Position - dragStart
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            local loc = UIS:GetMouseLocation()
+            local delta = Vector2.new(loc.X, loc.Y) - Vector2.new(dragStart.X, dragStart.Y)
             mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        elseif input.UserInputType == Enum.UserInputType.Touch then
+            if (dragInput == nil) or (input == dragInput) then
+                local delta = input.Position - dragStart
+                mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
         end
     end)
     topBar.InputEnded:Connect(function(input)
