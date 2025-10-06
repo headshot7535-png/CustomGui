@@ -615,7 +615,12 @@ function CustomGui:AddLabel(parent, text)
     label.TextColor3 = theme.text
     label.Font = Enum.Font.Gotham
     label.TextSize = 18
--- Collapsible grouped section
+    label.Parent = parent
+    label.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
+    return label
+end
+
+-- Collapsible grouped section (top-level definition)
 function CustomGui:AddGroup(parent, props)
     local theme = getThemeFor(parent)
     local sg = parent:FindFirstAncestorOfClass("ScreenGui")
@@ -667,10 +672,6 @@ function CustomGui:AddGroup(parent, props)
     end)
     function group:GetContent() return content end
     return group
-end
-    label.Parent = parent
-    label.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
-    return label
 end
 
 function CustomGui:AddButton(parent, props)
