@@ -531,9 +531,11 @@ function CustomGui:CreateWindow(props)
             -- Save raw pixel offsets for exact placement (no clamping)
             windowObj._uiStore:Set("reopenPos", { ox = pos.X, oy = pos.Y })
         end
+        local rPending = false
         reopenBtn.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                rDragging = true
+                rDragging = false
+                rPending = true
                 rDragStart = input.Position
                 rStartPos = reopenBtn.AbsolutePosition
                 movedMag = 0
@@ -541,19 +543,31 @@ function CustomGui:CreateWindow(props)
         end)
 
         UIS.InputChanged:Connect(function(input)
-            if not rDragging then return end
+            if not (rDragging or rPending) then return end
             if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
                 -- Use the event's position to avoid GUI inset offsets - works anywhere on screen
                 local delta = Vector2.new(input.Position.X - rDragStart.X, input.Position.Y - rDragStart.Y)
                 movedMag = math.max(movedMag, delta.Magnitude)
-                local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
-                reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
+                
+                -- Start dragging if we've moved enough
+                if rPending and movedMag > 15 then
+                    rDragging = true
+                    rPending = false
+                end
+                
+                -- Only move if actively dragging
+                if rDragging then
+                    local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
+                    reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
+                end
             end
         end)
         local function finishIconDragOrClick()
-            if not rDragging then return end
+            if not (rDragging or rPending) then return end
+            local wasDragging = rDragging
             rDragging = false
-            if movedMag > 8 then
+            rPending = false
+            if wasDragging and movedMag > 25 then
                 -- Save position without clamping - allow anywhere
                 saveReopenPos()
                 -- Make absolutely sure it's visible
