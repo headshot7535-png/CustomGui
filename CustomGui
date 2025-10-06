@@ -806,6 +806,7 @@ function CustomGui:AddMultiDropdown(parent, props)
     frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44)
     frame.BackgroundColor3 = theme.dropdownBG
     frame.BackgroundTransparency = 0.18
+    frame.ClipsDescendants = true
     frame.Parent = parent
     frame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
     local uiCorner = Instance.new("UICorner")
@@ -833,17 +834,18 @@ function CustomGui:AddMultiDropdown(parent, props)
     panel.Position = UDim2.new(0, 4, 0, (density == "compact") and 32 or 38)
     panel.BackgroundTransparency = 1
     panel.Visible = false
+    panel.AutomaticSize = Enum.AutomaticSize.Y
     panel.Parent = frame
     local list = Instance.new("UIListLayout")
     list.Parent = panel
     list.Padding = UDim.new(0, (density == "compact") and 4 or 6)
     list.SortOrder = Enum.SortOrder.LayoutOrder
     local function rebuildHeight()
-        local h = 0
-        for _, c in ipairs(panel:GetChildren()) do if c:IsA("GuiObject") then h += c.AbsoluteSize.Y + ((density=="compact") and 4 or 6) end end
-        if #panel:GetChildren() > 0 then h -= ((density=="compact") and 4 or 6) end
-        panel.Size = UDim2.new(1, -8, 0, h)
-        frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44 + (panel.Visible and (h + ((density=="compact") and 4 or 6)) or 0))
+        local pad = (density=="compact") and 4 or 6
+        local contentH = list.AbsoluteContentSize.Y
+        panel.Size = UDim2.new(1, -8, 0, contentH)
+        local baseH = (density == "compact") and 36 or 44
+        frame.Size = UDim2.new(0.98, 0, 0, baseH + (panel.Visible and (contentH + pad) or 0))
     end
     header.MouseButton1Click:Connect(function()
         panel.Visible = not panel.Visible
@@ -874,6 +876,7 @@ function CustomGui:AddMultiDropdown(parent, props)
     end
     panel.ChildAdded:Connect(rebuildHeight)
     panel.ChildRemoved:Connect(rebuildHeight)
+    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(rebuildHeight)
     task.defer(rebuildHeight)
     -- Cannot attach custom methods to Instances; rely on callback to report selection
     -- Fire initial callback if defaults provided
@@ -890,6 +893,7 @@ function CustomGui:AddDropdown(parent, props)
     frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44)
     frame.BackgroundColor3 = theme.dropdownBG
     frame.BackgroundTransparency = 0.18
+    frame.ClipsDescendants = true
     frame.Parent = parent
     frame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
     local uiCorner = Instance.new("UICorner")
@@ -914,6 +918,7 @@ function CustomGui:AddDropdown(parent, props)
     panel.Position = UDim2.new(0, 4, 0, (density == "compact") and 32 or 38)
     panel.BackgroundTransparency = 1
     panel.Visible = false
+    panel.AutomaticSize = Enum.AutomaticSize.Y
     panel.Parent = frame
 
     local list = Instance.new("UIListLayout")
@@ -922,11 +927,11 @@ function CustomGui:AddDropdown(parent, props)
     list.SortOrder = Enum.SortOrder.LayoutOrder
 
     local function rebuildHeight()
-        local h = 0
-        for _, c in ipairs(panel:GetChildren()) do if c:IsA("GuiObject") then h += c.AbsoluteSize.Y + ((density=="compact") and 4 or 6) end end
-        if #panel:GetChildren() > 0 then h -= ((density=="compact") and 4 or 6) end
-        panel.Size = UDim2.new(1, -8, 0, h)
-        frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44 + (panel.Visible and (h + ((density=="compact") and 4 or 6)) or 0))
+        local pad = (density=="compact") and 4 or 6
+        local contentH = list.AbsoluteContentSize.Y
+        panel.Size = UDim2.new(1, -8, 0, contentH)
+        local baseH = (density == "compact") and 36 or 44
+        frame.Size = UDim2.new(0.98, 0, 0, baseH + (panel.Visible and (contentH + pad) or 0))
     end
 
     header.MouseButton1Click:Connect(function()
@@ -960,6 +965,7 @@ function CustomGui:AddDropdown(parent, props)
         end)
     end
 
+    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(rebuildHeight)
     task.defer(rebuildHeight)
     pcall(function() frame:SetAttribute("CG_Value", value) end)
     if props.Default ~= nil and props.Callback then props.Callback(value) end
