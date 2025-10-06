@@ -803,59 +803,48 @@ function CustomGui:AddMultiDropdown(parent, props)
     local theme = getThemeFor(parent)
     local sg = parent:FindFirstAncestorOfClass("ScreenGui")
     local density = sg and sg:GetAttribute("Density") or "comfortable"
-    frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44)
+    frame.Size = UDim2.new(0.98, 0, 0, 0)
+    frame.AutomaticSize = Enum.AutomaticSize.Y
     frame.BackgroundColor3 = theme.dropdownBG
     frame.BackgroundTransparency = 0.18
     frame.ClipsDescendants = true
     frame.Parent = parent
     frame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 8)
-    uiCorner.Parent = frame
+    local uiCorner = Instance.new("UICorner"); uiCorner.CornerRadius = UDim.new(0, 8); uiCorner.Parent = frame
+    local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0,4); pad.PaddingRight = UDim.new(0,4); pad.PaddingTop = UDim.new(0,6); pad.PaddingBottom = UDim.new(0,6); pad.Parent = frame
+    local stack = Instance.new("UIListLayout"); stack.Parent = frame; stack.Padding = UDim.new(0, (density=="compact") and 4 or 6); stack.SortOrder = Enum.SortOrder.LayoutOrder
+
     local header = Instance.new("TextButton")
     header.Text = (props.Name or "Dropdown") .. "  ▾"
-    header.Size = UDim2.new(1, -8, 0, (density == "compact") and 26 or 30)
-    header.Position = UDim2.new(0, 4, 0, 6)
+    header.Size = UDim2.new(1, 0, 0, (density == "compact") and 26 or 30)
     header.BackgroundTransparency = 1
     header.TextColor3 = theme.text
     header.Font = Enum.Font.GothamBold
     header.TextSize = (density == "compact") and 16 or 18
     header.Parent = frame
+
     local selected = {}
     local defaultsSet = false
-    if type(props.Default) == "table" then
-        for _, v in ipairs(props.Default) do selected[#selected+1] = v end
-        defaultsSet = true
-    end
-    -- Collapsible options panel
+    if type(props.Default) == "table" then for _, v in ipairs(props.Default) do selected[#selected+1] = v end; defaultsSet = true end
+
     local panel = Instance.new("Frame")
     panel.Name = "Options"
-    panel.Size = UDim2.new(1, -8, 0, 0)
-    panel.Position = UDim2.new(0, 4, 0, (density == "compact") and 32 or 38)
+    panel.Size = UDim2.new(1, 0, 0, 0)
+    panel.AutomaticSize = Enum.AutomaticSize.Y
     panel.BackgroundTransparency = 1
     panel.Visible = false
-    panel.AutomaticSize = Enum.AutomaticSize.Y
     panel.Parent = frame
-    local list = Instance.new("UIListLayout")
-    list.Parent = panel
-    list.Padding = UDim.new(0, (density == "compact") and 4 or 6)
-    list.SortOrder = Enum.SortOrder.LayoutOrder
-    local function rebuildHeight()
-        local pad = (density=="compact") and 4 or 6
-        local contentH = list.AbsoluteContentSize.Y
-        panel.Size = UDim2.new(1, -8, 0, contentH)
-        local baseH = (density == "compact") and 36 or 44
-        frame.Size = UDim2.new(0.98, 0, 0, baseH + (panel.Visible and (contentH + pad) or 0))
-    end
+    local list = Instance.new("UIListLayout"); list.Parent = panel; list.Padding = UDim.new(0, (density == "compact") and 4 or 6); list.SortOrder = Enum.SortOrder.LayoutOrder
+
     header.MouseButton1Click:Connect(function()
         panel.Visible = not panel.Visible
         header.Text = (props.Name or "Dropdown") .. (panel.Visible and "  ▾" or "  ▸")
-        rebuildHeight()
     end)
-    for _, option in ipairs(props.Options) do
+
+    for _, option in ipairs(props.Options or {}) do
         local optBtn = Instance.new("TextButton")
-        optBtn.Text = option
-        optBtn.Size = UDim2.new(0.96, 0, 0, (density == "compact") and 24 or 28)
+        optBtn.Text = tostring(option)
+        optBtn.Size = UDim2.new(1, -8, 0, (density == "compact") and 24 or 28)
         optBtn.BackgroundColor3 = theme.dropdownOpt
         optBtn.TextColor3 = theme.text
         optBtn.Font = Enum.Font.Gotham
@@ -874,12 +863,7 @@ function CustomGui:AddMultiDropdown(parent, props)
             if props.Callback then props.Callback(selected) end
         end)
     end
-    panel.ChildAdded:Connect(rebuildHeight)
-    panel.ChildRemoved:Connect(rebuildHeight)
-    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(rebuildHeight)
-    task.defer(rebuildHeight)
-    -- Cannot attach custom methods to Instances; rely on callback to report selection
-    -- Fire initial callback if defaults provided
+
     if defaultsSet and props.Callback then props.Callback(table.clone(selected)) end
     return frame
 end
@@ -890,20 +874,20 @@ function CustomGui:AddDropdown(parent, props)
     local theme = getThemeFor(parent)
     local sg = parent:FindFirstAncestorOfClass("ScreenGui")
     local density = sg and sg:GetAttribute("Density") or "comfortable"
-    frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44)
+    frame.Size = UDim2.new(0.98, 0, 0, 0)
+    frame.AutomaticSize = Enum.AutomaticSize.Y
     frame.BackgroundColor3 = theme.dropdownBG
     frame.BackgroundTransparency = 0.18
     frame.ClipsDescendants = true
     frame.Parent = parent
     frame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 8)
-    uiCorner.Parent = frame
+    local uiCorner = Instance.new("UICorner"); uiCorner.CornerRadius = UDim.new(0, 8); uiCorner.Parent = frame
+    local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0,4); pad.PaddingRight = UDim.new(0,4); pad.PaddingTop = UDim.new(0,6); pad.PaddingBottom = UDim.new(0,6); pad.Parent = frame
+    local stack = Instance.new("UIListLayout"); stack.Parent = frame; stack.Padding = UDim.new(0, (density=="compact") and 4 or 6); stack.SortOrder = Enum.SortOrder.LayoutOrder
 
     local header = Instance.new("TextButton")
     header.Text = (props.Name or "Dropdown") .. "  ▾"
-    header.Size = UDim2.new(1, -8, 0, (density == "compact") and 26 or 30)
-    header.Position = UDim2.new(0, 4, 0, 6)
+    header.Size = UDim2.new(1, 0, 0, (density == "compact") and 26 or 30)
     header.BackgroundTransparency = 1
     header.TextColor3 = theme.text
     header.Font = Enum.Font.GothamBold
@@ -911,39 +895,24 @@ function CustomGui:AddDropdown(parent, props)
     header.Parent = frame
 
     local value = props.Default
-
     local panel = Instance.new("Frame")
     panel.Name = "Options"
-    panel.Size = UDim2.new(1, -8, 0, 0)
-    panel.Position = UDim2.new(0, 4, 0, (density == "compact") and 32 or 38)
+    panel.Size = UDim2.new(1, 0, 0, 0)
+    panel.AutomaticSize = Enum.AutomaticSize.Y
     panel.BackgroundTransparency = 1
     panel.Visible = false
-    panel.AutomaticSize = Enum.AutomaticSize.Y
     panel.Parent = frame
-
-    local list = Instance.new("UIListLayout")
-    list.Parent = panel
-    list.Padding = UDim.new(0, (density == "compact") and 4 or 6)
-    list.SortOrder = Enum.SortOrder.LayoutOrder
-
-    local function rebuildHeight()
-        local pad = (density=="compact") and 4 or 6
-        local contentH = list.AbsoluteContentSize.Y
-        panel.Size = UDim2.new(1, -8, 0, contentH)
-        local baseH = (density == "compact") and 36 or 44
-        frame.Size = UDim2.new(0.98, 0, 0, baseH + (panel.Visible and (contentH + pad) or 0))
-    end
+    local list = Instance.new("UIListLayout"); list.Parent = panel; list.Padding = UDim.new(0, (density == "compact") and 4 or 6); list.SortOrder = Enum.SortOrder.LayoutOrder
 
     header.MouseButton1Click:Connect(function()
         panel.Visible = not panel.Visible
         header.Text = (props.Name or "Dropdown") .. (panel.Visible and "  ▾" or "  ▸")
-        rebuildHeight()
     end)
 
     for _, option in ipairs(props.Options or {}) do
         local optBtn = Instance.new("TextButton")
         optBtn.Text = tostring(option)
-        optBtn.Size = UDim2.new(0.96, 0, 0, (density == "compact") and 24 or 28)
+        optBtn.Size = UDim2.new(1, -8, 0, (density == "compact") and 24 or 28)
         optBtn.BackgroundColor3 = theme.dropdownOpt
         optBtn.TextColor3 = theme.text
         optBtn.Font = Enum.Font.Gotham
@@ -953,20 +922,15 @@ function CustomGui:AddDropdown(parent, props)
         if value == option then optBtn.BackgroundColor3 = theme.buttonOn end
         optBtn.MouseButton1Click:Connect(function()
             value = option
-            for _, c in ipairs(panel:GetChildren()) do
-                if c:IsA("TextButton") then c.BackgroundColor3 = theme.dropdownOpt end
-            end
+            for _, c in ipairs(panel:GetChildren()) do if c:IsA("TextButton") then c.BackgroundColor3 = theme.dropdownOpt end end
             optBtn.BackgroundColor3 = theme.buttonOn
             if props.Callback then props.Callback(value) end
             pcall(function() frame:SetAttribute("CG_Value", value) end)
             panel.Visible = false
             header.Text = (props.Name or "Dropdown") .. "  ▸"
-            rebuildHeight()
         end)
     end
 
-    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(rebuildHeight)
-    task.defer(rebuildHeight)
     pcall(function() frame:SetAttribute("CG_Value", value) end)
     if props.Default ~= nil and props.Callback then props.Callback(value) end
     return frame
