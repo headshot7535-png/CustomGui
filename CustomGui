@@ -881,6 +881,91 @@ function CustomGui:AddMultiDropdown(parent, props)
     return frame
 end
 
+-- Single-select dropdown (library-agnostic)
+function CustomGui:AddDropdown(parent, props)
+    local frame = Instance.new("Frame")
+    local theme = getThemeFor(parent)
+    local sg = parent:FindFirstAncestorOfClass("ScreenGui")
+    local density = sg and sg:GetAttribute("Density") or "comfortable"
+    frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44)
+    frame.BackgroundColor3 = theme.dropdownBG
+    frame.BackgroundTransparency = 0.18
+    frame.Parent = parent
+    frame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = frame
+
+    local header = Instance.new("TextButton")
+    header.Text = (props.Name or "Dropdown") .. "  ▾"
+    header.Size = UDim2.new(1, -8, 0, (density == "compact") and 26 or 30)
+    header.Position = UDim2.new(0, 4, 0, 6)
+    header.BackgroundTransparency = 1
+    header.TextColor3 = theme.text
+    header.Font = Enum.Font.GothamBold
+    header.TextSize = (density == "compact") and 16 or 18
+    header.Parent = frame
+
+    local value = props.Default
+
+    local panel = Instance.new("Frame")
+    panel.Name = "Options"
+    panel.Size = UDim2.new(1, -8, 0, 0)
+    panel.Position = UDim2.new(0, 4, 0, (density == "compact") and 32 or 38)
+    panel.BackgroundTransparency = 1
+    panel.Visible = false
+    panel.Parent = frame
+
+    local list = Instance.new("UIListLayout")
+    list.Parent = panel
+    list.Padding = UDim.new(0, (density == "compact") and 4 or 6)
+    list.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local function rebuildHeight()
+        local h = 0
+        for _, c in ipairs(panel:GetChildren()) do if c:IsA("GuiObject") then h += c.AbsoluteSize.Y + ((density=="compact") and 4 or 6) end end
+        if #panel:GetChildren() > 0 then h -= ((density=="compact") and 4 or 6) end
+        panel.Size = UDim2.new(1, -8, 0, h)
+        frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44 + (panel.Visible and (h + ((density=="compact") and 4 or 6)) or 0))
+    end
+
+    header.MouseButton1Click:Connect(function()
+        panel.Visible = not panel.Visible
+        header.Text = (props.Name or "Dropdown") .. (panel.Visible and "  ▾" or "  ▸")
+        rebuildHeight()
+    end)
+
+    for _, option in ipairs(props.Options or {}) do
+        local optBtn = Instance.new("TextButton")
+        optBtn.Text = tostring(option)
+        optBtn.Size = UDim2.new(0.96, 0, 0, (density == "compact") and 24 or 28)
+        optBtn.BackgroundColor3 = theme.dropdownOpt
+        optBtn.TextColor3 = theme.text
+        optBtn.Font = Enum.Font.Gotham
+        optBtn.TextSize = (density == "compact") and 14 or 16
+        optBtn.Parent = panel
+        local btnCorner = Instance.new("UICorner"); btnCorner.CornerRadius = UDim.new(0, 6); btnCorner.Parent = optBtn
+        if value == option then optBtn.BackgroundColor3 = theme.buttonOn end
+        optBtn.MouseButton1Click:Connect(function()
+            value = option
+            for _, c in ipairs(panel:GetChildren()) do
+                if c:IsA("TextButton") then c.BackgroundColor3 = theme.dropdownOpt end
+            end
+            optBtn.BackgroundColor3 = theme.buttonOn
+            if props.Callback then props.Callback(value) end
+            pcall(function() frame:SetAttribute("CG_Value", value) end)
+            panel.Visible = false
+            header.Text = (props.Name or "Dropdown") .. "  ▸"
+            rebuildHeight()
+        end)
+    end
+
+    task.defer(rebuildHeight)
+    pcall(function() frame:SetAttribute("CG_Value", value) end)
+    if props.Default ~= nil and props.Callback then props.Callback(value) end
+    return frame
+end
+
 -- Window helpers: theme switch, utilities, keybinds, command palette, ESP, noclip, click TP
 do
     function CustomGui:_applyThemeToWindow(win, themeName)
@@ -1192,38 +1277,60 @@ do
 
     function CustomGui:_buildUtilitiesTab(win)
         local tab = win:MakeTab({ Name = "Utilities" })
+        -- Persistent Utilities store
+        win._utilitiesStore = win._utilitiesStore or win:CreateStore("utilities")
+        local uStore = win._utilitiesStore
+        local defaults = {
+            antiAFK = false,
+            espNames = false,
+            espHighlight = false,
+            espTracers = false,
+            espTeamColors = true,
+            noclip = false,
+            clickTP = false,
+            fpsCap = 60,
+            theme = "Carbon",
+        }
+        local uSettings = uStore:Get("utilities", defaults)
+        local function usave() uStore:Set("utilities", uSettings) end
+
         -- Anti-AFK
-        CustomGui:AddToggle(tab, { Name = "Anti-AFK", Default = win._antiAFKEnabled, Callback = function(on)
-            win:EnableAntiAFK(on)
+        CustomGui:AddToggle(tab, { Name = "Anti-AFK", Default = uSettings.antiAFK, Callback = function(on)
+            uSettings.antiAFK = on; usave(); win:EnableAntiAFK(on)
         end })
 
         -- ESP toggles
         win._esp = win._esp or { names=false, highlight=false, tracers=false, teamColors=true }
-        CustomGui:AddToggle(tab, { Name = "ESP Names", Default = false, Callback = function(on)
-            win._esp.names = on; CustomGui:_toggleESP(win)
+        win._esp.names = uSettings.espNames
+        win._esp.highlight = uSettings.espHighlight
+        win._esp.tracers = uSettings.espTracers
+        win._esp.teamColors = uSettings.espTeamColors
+        CustomGui:AddToggle(tab, { Name = "ESP Names", Default = uSettings.espNames, Callback = function(on)
+            uSettings.espNames = on; usave(); win._esp.names = on; CustomGui:_toggleESP(win)
         end })
-        CustomGui:AddToggle(tab, { Name = "ESP Highlight", Default = false, Callback = function(on)
-            win._esp.highlight = on; CustomGui:_toggleESP(win)
+        CustomGui:AddToggle(tab, { Name = "ESP Highlight", Default = uSettings.espHighlight, Callback = function(on)
+            uSettings.espHighlight = on; usave(); win._esp.highlight = on; CustomGui:_toggleESP(win)
         end })
         local drawingAvail = (Drawing and typeof(Drawing.new) == "function")
-        CustomGui:AddToggle(tab, { Name = "ESP Tracers" .. (drawingAvail and "" or " (Unavailable)"), Default = false, Callback = function(on)
-            if drawingAvail then win._esp.tracers = on; CustomGui:_toggleESP(win) else Exec.notify("ESP", "Drawing API not available", 3) end
+        CustomGui:AddToggle(tab, { Name = "ESP Tracers" .. (drawingAvail and "" or " (Unavailable)"), Default = uSettings.espTracers, Callback = function(on)
+            if drawingAvail then uSettings.espTracers = on; usave(); win._esp.tracers = on; CustomGui:_toggleESP(win) else Exec.notify("ESP", "Drawing API not available", 3) end
         end })
-        CustomGui:AddToggle(tab, { Name = "ESP Team Colors", Default = true, Callback = function(on)
-            win._esp.teamColors = on; CustomGui:_toggleESP(win)
+        CustomGui:AddToggle(tab, { Name = "ESP Team Colors", Default = uSettings.espTeamColors, Callback = function(on)
+            uSettings.espTeamColors = on; usave(); win._esp.teamColors = on; CustomGui:_toggleESP(win)
         end })
 
         -- Noclip & Click TP
-        CustomGui:AddToggle(tab, { Name = "Noclip", Default = false, Callback = function(on)
-            CustomGui:_enableNoclip(win, on)
+        CustomGui:AddToggle(tab, { Name = "Noclip", Default = uSettings.noclip, Callback = function(on)
+            uSettings.noclip = on; usave(); CustomGui:_enableNoclip(win, on)
         end })
-        CustomGui:AddToggle(tab, { Name = "Click TP (Hold Ctrl)", Default = false, Callback = function(on)
-            CustomGui:_enableClickTP(win, on, Enum.KeyCode.LeftControl)
+        CustomGui:AddToggle(tab, { Name = "Click TP (Hold Ctrl)", Default = uSettings.clickTP, Callback = function(on)
+            uSettings.clickTP = on; usave(); CustomGui:_enableClickTP(win, on, Enum.KeyCode.LeftControl)
         end })
 
         -- FPS Cap
-        CustomGui:AddSlider(tab, { Name = "FPS Cap", Min = 30, Max = 360, Default = 60, Callback = function(v)
-            CustomGui:_setFPS(math.floor(v))
+        CustomGui:AddSlider(tab, { Name = "FPS Cap", Min = 30, Max = 360, Default = uSettings.fpsCap or 60, Callback = function(v)
+            v = math.floor(v)
+            uSettings.fpsCap = v; usave(); CustomGui:_setFPS(v)
         end })
 
         -- Server actions
@@ -1234,23 +1341,17 @@ do
             CustomGui:_serverHop()
         end })
 
-        -- Themes quick switch
-        CustomGui:AddLabel(tab, "Themes")
-        local row = Instance.new("Frame")
-        row.Size = UDim2.new(0.98, 0, 0, 40)
-        row.BackgroundTransparency = 1
-        row.Parent = tab
-        row.LayoutOrder = tab:GetChildren() and #tab:GetChildren() or 1
-        local list = Instance.new("UIListLayout")
-        list.Parent = row
-        list.FillDirection = Enum.FillDirection.Horizontal
-        list.Padding = UDim.new(0, 8)
-        local function themeBtn(name)
-            return CustomGui:AddButton(row, { Name = name, Callback = function()
-                CustomGui:_applyThemeToWindow(win, name)
-            end })
-        end
-        themeBtn("Carbon"); themeBtn("Midnight"); themeBtn("Pastel")
+        -- Theme as dropdown
+        CustomGui:AddLabel(tab, "Theme")
+        CustomGui:AddDropdown(tab, {
+            Name = "Theme",
+            Options = {"Carbon", "Midnight", "Pastel"},
+            Default = uSettings.theme or "Carbon",
+            Callback = function(val)
+                uSettings.theme = val; usave(); CustomGui:_applyThemeToWindow(win, val)
+            end
+        })
+        CustomGui:_applyThemeToWindow(win, uSettings.theme or "Carbon")
 
         -- Keybinds & Command palette
         CustomGui:_ensureKeybindLoop(win)
