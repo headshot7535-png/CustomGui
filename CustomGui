@@ -1,21 +1,180 @@
 -- CustomGui.lua
--- Simple Roblox GUI library supporting mobile and multi-select dropdowns
--- Usage: require(path_to_CustomGui)
+-- Roblox GUI helper with Delta-executor friendly features, native Anti-AFK,
+-- task manager (Stop All), per-game settings, teleport re-exec, and richer controls.
+-- Usage: local Gui = require(path_to_CustomGui)
 
 local CustomGui = {}
 
+-- Services and shared locals
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+local UIS = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+
+-- Themes
+local Themes = {
+    Carbon = {
+        bg = Color3.fromRGB(22,22,22),
+        top = Color3.fromRGB(32,32,32),
+        tab = Color3.fromRGB(35,35,35),
+        tabActive = Color3.fromRGB(60,180,75),
+        tabInactive = Color3.fromRGB(50,50,50),
+        text = Color3.fromRGB(220,220,220),
+        section = Color3.fromRGB(45,45,45),
+        buttonOn = Color3.fromRGB(60,180,75),
+        buttonOff = Color3.fromRGB(180,60,60),
+        sliderBar = Color3.fromRGB(60,60,60),
+        sliderThumb = Color3.fromRGB(100,100,255),
+        dropdownBG = Color3.fromRGB(38,38,38),
+        dropdownOpt = Color3.fromRGB(80,80,80),
+    },
+    Midnight = {
+        bg = Color3.fromRGB(16,18,24),
+        top = Color3.fromRGB(20,22,30),
+        tab = Color3.fromRGB(24,26,34),
+        tabActive = Color3.fromRGB(88,101,242),
+        tabInactive = Color3.fromRGB(48,50,60),
+        text = Color3.fromRGB(220,225,235),
+        section = Color3.fromRGB(28,30,38),
+        buttonOn = Color3.fromRGB(88,101,242),
+        buttonOff = Color3.fromRGB(190,70,70),
+        sliderBar = Color3.fromRGB(60,62,72),
+        sliderThumb = Color3.fromRGB(126,137,255),
+        dropdownBG = Color3.fromRGB(26,28,36),
+        dropdownOpt = Color3.fromRGB(64,66,76),
+    },
+    Pastel = {
+        bg = Color3.fromRGB(235,239,242),
+        top = Color3.fromRGB(210,220,230),
+        tab = Color3.fromRGB(215,225,235),
+        tabActive = Color3.fromRGB(64,180,170),
+        tabInactive = Color3.fromRGB(190,200,210),
+        text = Color3.fromRGB(24,32,40),
+        section = Color3.fromRGB(225,232,238),
+        buttonOn = Color3.fromRGB(64,180,170),
+        buttonOff = Color3.fromRGB(220,90,90),
+        sliderBar = Color3.fromRGB(170,180,190),
+        sliderThumb = Color3.fromRGB(64,160,200),
+        dropdownBG = Color3.fromRGB(225,232,238),
+        dropdownOpt = Color3.fromRGB(200,210,220),
+    }
+}
+
+local function getThemeFor(inst)
+    local sg = inst:FindFirstAncestorOfClass("ScreenGui")
+    local name = sg and sg:GetAttribute("ThemeName") or "Carbon"
+    return Themes[name] or Themes.Carbon, name or "Carbon"
+end
+
+-- Executor/Env utilities with safe fallbacks (Delta-friendly)
+local Exec = {}
+do
+    local ok_identify, identify = pcall(function()
+        return (identifyexecutor or identify_executor or getexecutorname)
+    end)
+    function Exec.identify()
+        local name, ver
+        if ok_identify and identify then
+            local ok, a, b = pcall(function() return identify() end)
+            if ok then
+                if typeof(a) == "string" and typeof(b) == "string" then name, ver = a, b else name = tostring(a or "Unknown") end
+            end
+        end
+        -- Common globals some executors expose
+        if not name then
+            if syn then name = "syn" end
+            if KRNL_LOADED then name = "krnl" end
+            if is_sirhurt_closure then name = "sirhurt" end
+            if hookfunction and not name then name = "generic" end
+        end
+        return name or "unknown", ver
+    end
+
+    local function tryf(name)
+        local ok, fn = pcall(function() return _G[name] or getfenv()[name] or _G[name] end)
+        if ok and typeof(fn) == "function" then return fn end
+        if syn and typeof(syn[name]) == "function" then return syn[name] end
+        return nil
+    end
+
+    Exec.isfile = isfile or tryf("isfile")
+    Exec.writefile = writefile or tryf("writefile")
+    Exec.readfile = readfile or tryf("readfile")
+    Exec.makefolder = makefolder or tryf("makefolder")
+    Exec.isfolder = isfolder or tryf("isfolder")
+    Exec.queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport) or tryf("queue_on_teleport")
+    Exec.protect_gui = (syn and syn.protect_gui) or tryf("protect_gui")
+    Exec.gethui = (gethui or get_hidden_ui or gethiddengui or stealth_ui) -- many aliases across executors
+    Exec.setclipboard = setclipboard or (syn and syn.write_clipboard) or tryf("setclipboard")
+
+    function Exec.notify(title, text, duration)
+        pcall(function()
+            StarterGui:SetCore("SendNotification", {Title = title or "CustomGui"; Text = text or ""; Duration = duration or 3})
+        end)
+    end
+
+    -- Ensure folder exists (noop if FS not available)
+    function Exec.ensure_folder(path)
+        if not (Exec.isfolder and Exec.makefolder) then return end
+        local ok = false
+        pcall(function()
+            if not Exec.isfolder(path) then Exec.makefolder(path) end
+            ok = true
+        end)
+        return ok
+    end
+end
+
+-- JSON helpers
+local function json_encode(tbl)
+    local ok, res = pcall(function() return HttpService:JSONEncode(tbl) end)
+    return ok and res or "{}"
+end
+local function json_decode(str)
+    if type(str) ~= "string" then return nil end
+    local ok, res = pcall(function() return HttpService:JSONDecode(str) end)
+    return ok and res or nil
+end
+
+-- UI parent selection (CoreGui/gethui preferred for exploit stability)
+local function choose_ui_parent()
+    -- Prefer hidden UI layer if provided by the executor
+    if Exec.gethui and typeof(Exec.gethui) == "function" then
+        local ok, ui = pcall(function() return Exec.gethui() end)
+        if ok and typeof(ui) == "Instance" then return ui end
+    end
+    -- Try CoreGui (exploit)
+    local ok = pcall(function() return CoreGui.Name end)
+    if ok then return CoreGui end
+    -- Fallback to PlayerGui (normal LocalScript context)
+    local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+    return pg
+end
+
 function CustomGui:CreateWindow(props)
+    props = props or {}
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = props.Name or "CustomWindow"
     screenGui.ResetOnSpawn = false
-    screenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    screenGui.IgnoreGuiInset = true
+    screenGui.DisplayOrder = 1_000_000 -- always on top
+    screenGui:SetAttribute("ThemeName", props.Theme or "Carbon")
+    screenGui:SetAttribute("Density", props.Density or "comfortable") -- comfortable | compact
+    -- Protect and parent to executor UI if possible
+    pcall(function() if Exec.protect_gui then Exec.protect_gui(screenGui) end end)
+    screenGui.Parent = choose_ui_parent()
 
     -- Main frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
     mainFrame.Size = UDim2.new(0.7, 0, 0.7, 0)
     mainFrame.Position = UDim2.new(0.15, 0, 0.15, 0)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22) -- Carbon black
+    local theme = getThemeFor(screenGui)
+    mainFrame.BackgroundColor3 = theme.bg
     mainFrame.BorderSizePixel = 0
     mainFrame.BackgroundTransparency = 0.05
     mainFrame.Parent = screenGui
@@ -30,9 +189,11 @@ function CustomGui:CreateWindow(props)
     -- Top bar (draggable, closable)
     local topBar = Instance.new("Frame")
     topBar.Name = "TopBar"
-    topBar.Size = UDim2.new(1, 0, 0, 36)
+    local density = screenGui:GetAttribute("Density")
+    local topH = (density == "compact") and 30 or 36
+    topBar.Size = UDim2.new(1, 0, 0, topH)
     topBar.Position = UDim2.new(0, 0, 0, 0)
-    topBar.BackgroundColor3 = Color3.fromRGB(32, 32, 32) -- Carbon gray
+    topBar.BackgroundColor3 = theme.top
     topBar.Parent = mainFrame
     local topCorner = Instance.new("UICorner")
     topCorner.CornerRadius = UDim.new(0, 18)
@@ -43,7 +204,7 @@ function CustomGui:CreateWindow(props)
     title.Size = UDim2.new(1, -80, 1, 0)
     title.Position = UDim2.new(0, 0, 0, 0)
     title.BackgroundTransparency = 1
-    title.TextColor3 = Color3.fromRGB(220,220,220)
+    title.TextColor3 = theme.text
     title.Font = Enum.Font.GothamBold
     title.TextSize = 20
     title.Parent = topBar
@@ -88,14 +249,211 @@ function CustomGui:CreateWindow(props)
     reopenCorner.CornerRadius = UDim.new(0, 14)
     reopenCorner.Parent = reopenBtn
 
-    closeBtn.MouseButton1Click:Connect(function()
-        -- Stop all running threads (best effort)
-        for _, t in ipairs(getgc(true)) do
-            if typeof(t) == "thread" and coroutine.status(t) == "suspended" then
-                coroutine.close(t)
+    -- Optional keybind to show/hide (RightShift default)
+    local toggleKey = props.ToggleKey or Enum.KeyCode.RightShift
+    UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == toggleKey then
+            if mainFrame.Visible then
+                mainFrame.Visible = false
+                reopenBtn.Visible = true
+            else
+                mainFrame.Visible = true
+                reopenBtn.Visible = false
             end
         end
-        screenGui:Destroy()
+    end)
+
+    -- window object exposed to caller
+    local windowObj = {
+        ScreenGui = screenGui,
+        mainFrame = mainFrame,
+        closeBtn = closeBtn,
+        minimizeBtn = minimizeBtn,
+        reopenBtn = reopenBtn,
+        _closeCb = nil,
+        _tasks = {},
+        _stopAllFlag = false,
+        _antiAFKConn = nil,
+        _antiAFKEnabled = false,
+        _antiAFKGui = nil,
+        _antiAFKDot = nil,
+        _store = nil,
+    }
+
+    function windowObj:SetCloseCallback(cb)
+        self._closeCb = cb
+    end
+
+    function windowObj:Show()
+        if self.ScreenGui then self.ScreenGui.Enabled = true end
+        if self.mainFrame then self.mainFrame.Visible = true end
+        if self.reopenBtn then self.reopenBtn.Visible = false end
+    end
+
+    function windowObj:Hide()
+        if self.mainFrame then self.mainFrame.Visible = false end
+        if self.ScreenGui then self.ScreenGui.Enabled = true end
+        if self.reopenBtn then self.reopenBtn.Visible = true end
+        if self._closeCb then pcall(self._closeCb) end
+    end
+
+    function windowObj:Destroy()
+        if self._closeCb then pcall(self._closeCb) end
+        if self.ScreenGui then self.ScreenGui:Destroy() end
+    end
+
+    -- Task manager: register, run loop, and Stop All
+    function windowObj:RegisterTask(id, ref)
+        self._tasks[id] = ref
+    end
+    function windowObj:UnregisterTask(id)
+        self._tasks[id] = nil
+    end
+    function windowObj:RunLoop(id, fn, interval)
+        local alive = true
+        local th = task.spawn(function()
+            while alive and not self._stopAllFlag do
+                local ok, err = pcall(fn)
+                if not ok then warn("CustomGui loop error ["..tostring(id).."]:", err) end
+                task.wait(interval or 0.5)
+            end
+        end)
+        self:RegisterTask(id, {type="thread", thread = th, cancel = function() alive = false; pcall(task.cancel, th) end})
+        return function() -- stop fn
+            alive = false; self:UnregisterTask(id)
+            pcall(task.cancel, th)
+        end
+    end
+    function windowObj:StopAll()
+        self._stopAllFlag = true
+        for id, ref in pairs(self._tasks) do
+            local t = typeof(ref)
+            if t == "thread" then pcall(task.cancel, ref)
+            elseif t == "RBXScriptConnection" then pcall(function() ref:Disconnect() end)
+            elseif type(ref) == "table" and typeof(ref.thread) == "thread" then
+                if type(ref.cancel) == "function" then pcall(ref.cancel) else pcall(task.cancel, ref.thread) end
+            elseif type(ref) == "function" then pcall(ref) end
+            self._tasks[id] = nil
+        end
+        -- Disable Anti-AFK if running
+        self:EnableAntiAFK(false)
+    end
+
+    -- Native Anti-AFK with indicator dot (top-left)
+    function windowObj:_ensureAFKGui()
+        if self._antiAFKGui then return end
+        local g = Instance.new("ScreenGui")
+        g.Name = "AFKIndicator"
+        g.IgnoreGuiInset = true
+        g.ResetOnSpawn = false
+        g.DisplayOrder = 1_000_000
+        pcall(function() if Exec.protect_gui then Exec.protect_gui(g) end end)
+        g.Parent = choose_ui_parent()
+        local dot = Instance.new("Frame")
+        dot.Name = "Dot"
+        dot.Size = UDim2.new(0, 12, 0, 12)
+        dot.Position = UDim2.new(0, 8, 0, 8)
+        dot.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+        dot.BorderSizePixel = 0
+        dot.Parent = g
+        local dcorner = Instance.new("UICorner")
+        dcorner.CornerRadius = UDim.new(1, 0)
+        dcorner.Parent = dot
+        self._antiAFKGui = g
+        self._antiAFKDot = dot
+        dot.Visible = false
+    end
+    function windowObj:EnableAntiAFK(state)
+        state = not not state
+        self:_ensureAFKGui()
+        if state and not self._antiAFKEnabled then
+            local VirtualUser = game:GetService("VirtualUser")
+            self._antiAFKConn = LocalPlayer.Idled:Connect(function()
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new())
+                end)
+            end)
+            self._antiAFKEnabled = true
+            if self._antiAFKDot then self._antiAFKDot.Visible = true end
+            Exec.notify("Anti-AFK", "Enabled", 2)
+        elseif (not state) and self._antiAFKEnabled then
+            if self._antiAFKConn then pcall(function() self._antiAFKConn:Disconnect() end) end
+            self._antiAFKConn = nil
+            self._antiAFKEnabled = false
+            if self._antiAFKDot then self._antiAFKDot.Visible = false end
+            Exec.notify("Anti-AFK", "Disabled", 2)
+        end
+    end
+    -- Optional default from props
+    if props.AntiAFKDefault then windowObj:EnableAntiAFK(true) end
+
+    -- Settings store (per-user/per-game paths if FS exists)
+    function windowObj:CreateStore(name, opts)
+        opts = opts or {}
+        local userId = tostring(LocalPlayer.UserId or "0")
+        local placeId = tostring(game.PlaceId or "0")
+        local base = opts.base or "CustomGui"
+        local perUser = (opts.perUser ~= false)
+        local perGame = (opts.perGame ~= false)
+        local parts = {base}
+        if perUser then table.insert(parts, userId) end
+        if perGame then table.insert(parts, placeId) end
+        local folder = table.concat(parts, "/")
+        local file = folder .. "/" .. (name or "settings") .. ".json"
+        local function ensure()
+            if not Exec.ensure_folder then return end
+            local accum = {}
+            for seg in string.gmatch(folder, "[^/]+") do
+                table.insert(accum, seg)
+                Exec.ensure_folder(table.concat(accum, "/"))
+            end
+        end
+        ensure()
+        local cache = {}
+        local function save()
+            if not Exec.writefile then return end
+            local ok = pcall(function() Exec.writefile(file, json_encode(cache)) end)
+            if not ok then warn("CustomGui: failed to write settings "..file) end
+        end
+        local function load()
+            if not (Exec.isfile and Exec.readfile) then return end
+            local ok, str = pcall(function()
+                if Exec.isfile(file) then return Exec.readfile(file) end
+            end)
+            if ok and type(str) == "string" then
+                local got = json_decode(str)
+                if type(got) == "table" then cache = got end
+            end
+        end
+        load()
+        local store = {}
+        function store:Get(k, default)
+            local v = cache[k]
+            if v == nil then return default end
+            return v
+        end
+        function store:Set(k, v)
+            cache[k] = v
+            save()
+        end
+        function store:All() return cache end
+        function store:Save() save() end
+        function store:Load() load() end
+        self._store = store
+        return store
+    end
+
+    -- Teleport re-exec helper
+    function windowObj:QueueOnTeleport(luaSource)
+        if not Exec.queue_on_teleport then return false end
+        local ok = pcall(function() Exec.queue_on_teleport(luaSource) end)
+        return ok
+    end
+
+    closeBtn.MouseButton1Click:Connect(function()
+        windowObj:Hide()
     end)
     minimizeBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
@@ -135,9 +493,10 @@ function CustomGui:CreateWindow(props)
     -- Tab bar
     local tabBar = Instance.new("Frame")
     tabBar.Name = "TabBar"
-    tabBar.Size = UDim2.new(1, 0, 0, 38)
-    tabBar.Position = UDim2.new(0, 0, 0, 40)
-    tabBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    local tabH = (density == "compact") and 32 or 38
+    tabBar.Size = UDim2.new(1, 0, 0, tabH)
+    tabBar.Position = UDim2.new(0, 0, 0, topH + 4)
+    tabBar.BackgroundColor3 = theme.tab
     tabBar.Parent = mainFrame
     local tabCorner = Instance.new("UICorner")
     tabCorner.CornerRadius = UDim.new(0, 12)
@@ -157,23 +516,24 @@ function CustomGui:CreateWindow(props)
     function CustomGui:MakeTab(tabProps)
         local tabBtn = Instance.new("TextButton")
         tabBtn.Text = tabProps.Name or "Tab"
-        tabBtn.Size = UDim2.new(0, 120, 1, -8)
-        tabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        tabBtn.TextColor3 = Color3.fromRGB(220,220,220)
+    tabBtn.Size = UDim2.new(0, (density == "compact") and 100 or 120, 1, (density == "compact") and -6 or -8)
+        tabBtn.BackgroundColor3 = theme.tabInactive
+        tabBtn.TextColor3 = theme.text
         tabBtn.Font = Enum.Font.GothamBold
-        tabBtn.TextSize = 18
+    tabBtn.TextSize = (density == "compact") and 16 or 18
         tabBtn.Parent = tabBar
         tabBtn.AutoButtonColor = true
         local btnCorner = Instance.new("UICorner")
         btnCorner.CornerRadius = UDim.new(0, 8)
         btnCorner.Parent = tabBtn
 
-        local tabContent = Instance.new("ScrollingFrame")
+    local tabContent = Instance.new("ScrollingFrame")
         tabContent.Name = tabProps.Name .. "_Content"
-        tabContent.Size = UDim2.new(1, 0, 1, -78)
-        tabContent.Position = UDim2.new(0, 0, 0, 78)
+    local padTop = topH + tabH + 8
+    tabContent.Size = UDim2.new(1, -8, 1, -padTop - 8)
+    tabContent.Position = UDim2.new(0, 4, 0, padTop)
         tabContent.CanvasSize = UDim2.new(0, 0, 0, 800)
-        tabContent.ScrollBarThickness = 10
+    tabContent.ScrollBarThickness = (density == "compact") and 8 or 10
         tabContent.BackgroundTransparency = 1
         tabContent.Parent = mainFrame
         tabContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -182,7 +542,7 @@ function CustomGui:CreateWindow(props)
 
         local layout = Instance.new("UIListLayout")
         layout.Parent = tabContent
-        layout.Padding = UDim.new(0, 18)
+    layout.Padding = UDim.new(0, (density == "compact") and 10 or 18)
         layout.SortOrder = Enum.SortOrder.LayoutOrder
 
         tabs[#tabs+1] = tabBtn
@@ -191,15 +551,15 @@ function CustomGui:CreateWindow(props)
         tabBtn.MouseButton1Click:Connect(function()
             for i, t in ipairs(tabContents) do
                 t.Visible = false
-                tabs[i].BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                tabs[i].BackgroundColor3 = theme.tabInactive
             end
             tabContent.Visible = true
-            tabBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+            tabBtn.BackgroundColor3 = theme.tabActive
             activeTab = tabContent
         end)
 
         if #tabs == 1 then
-            tabBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+            tabBtn.BackgroundColor3 = theme.tabActive
             tabContent.Visible = true
             activeTab = tabContent
         end
@@ -207,8 +567,6 @@ function CustomGui:CreateWindow(props)
         return tabContent
     end
 
-    -- Return window object with tab creation
-    local windowObj = {}
     function windowObj:MakeTab(tabProps)
         return CustomGui:MakeTab(tabProps)
     end
@@ -222,8 +580,11 @@ end
 
 function CustomGui:AddSection(parent, props)
     local section = Instance.new("Frame")
-    section.Size = UDim2.new(0.98, 0, 0, 44)
-    section.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    local theme = getThemeFor(parent)
+    local sg = parent:FindFirstAncestorOfClass("ScreenGui")
+    local density = sg and sg:GetAttribute("Density") or "comfortable"
+    section.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 38 or 44)
+    section.BackgroundColor3 = theme.section
     section.BackgroundTransparency = 0.15
     section.Parent = parent
     section.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
@@ -234,9 +595,9 @@ function CustomGui:AddSection(parent, props)
     label.Text = props.Name or "Section"
     label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.fromRGB(255,255,255)
+    label.TextColor3 = theme.text
     label.Font = Enum.Font.GothamBold
-    label.TextSize = 24
+    label.TextSize = (density == "compact") and 20 or 24
     label.Parent = section
     label.AnchorPoint = Vector2.new(0.5,0.5)
     label.Position = UDim2.new(0.5,0,0.5,0)
@@ -246,21 +607,98 @@ end
 function CustomGui:AddLabel(parent, text)
     local label = Instance.new("TextLabel")
     label.Text = text
-    label.Size = UDim2.new(0.98, 0, 0, 28)
+    local sg = parent:FindFirstAncestorOfClass("ScreenGui")
+    local density = sg and sg:GetAttribute("Density") or "comfortable"
+    label.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 22 or 28)
     label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.fromRGB(200,200,200)
+    local theme = getThemeFor(parent)
+    label.TextColor3 = theme.text
     label.Font = Enum.Font.Gotham
     label.TextSize = 18
+-- Collapsible grouped section
+function CustomGui:AddGroup(parent, props)
+    local theme = getThemeFor(parent)
+    local sg = parent:FindFirstAncestorOfClass("ScreenGui")
+    local density = sg and sg:GetAttribute("Density") or "comfortable"
+    local group = Instance.new("Frame")
+    group.Name = (props.Name or "Group") .. "_Group"
+    group.Size = UDim2.new(0.98, 0, 0, 40)
+    group.BackgroundColor3 = theme.section
+    group.BackgroundTransparency = 0.1
+    group.Parent = parent
+    group.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
+    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 10); corner.Parent = group
+    local header = Instance.new("TextButton")
+    header.Size = UDim2.new(1, -8, 0, (density == "compact") and 30 or 36)
+    header.Position = UDim2.new(0, 4, 0, 2)
+    header.BackgroundTransparency = 1
+    header.Text = (props.Name or "Group") .. "  ▾"
+    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.TextColor3 = theme.text
+    header.Font = Enum.Font.GothamBold
+    header.TextSize = (density == "compact") and 18 or 20
+    header.Parent = group
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -8, 0, 0)
+    content.Position = UDim2.new(0, 4, 0, (density == "compact") and 32 or 38)
+    content.BackgroundTransparency = 1
+    content.Parent = group
+    local list = Instance.new("UIListLayout")
+    list.Parent = content
+    list.Padding = UDim.new(0, (density == "compact") and 6 or 10)
+    list.SortOrder = Enum.SortOrder.LayoutOrder
+    local collapsed = false
+    local function updateSize()
+        local childrenH = 0
+        for _, c in ipairs(content:GetChildren()) do
+            if c:IsA("GuiObject") then childrenH += c.AbsoluteSize.Y + ((density == "compact") and 6 or 10) end
+        end
+        if #content:GetChildren() > 0 then childrenH -= ((density == "compact") and 6 or 10) end
+        group.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 34 or 40 + (collapsed and 0 or (childrenH + ((density == "compact") and 4 or 8))))
+    end
+    content.ChildAdded:Connect(updateSize)
+    content.ChildRemoved:Connect(updateSize)
+    header.MouseButton1Click:Connect(function()
+        collapsed = not collapsed
+        header.Text = (props.Name or "Group") .. (collapsed and "  ▸" or "  ▾")
+        content.Visible = not collapsed
+        updateSize()
+    end)
+    function group:GetContent() return content end
+    return group
+end
     label.Parent = parent
     label.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
     return label
+end
+
+function CustomGui:AddButton(parent, props)
+    local theme = getThemeFor(parent)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.98, 0, 0, 36)
+    btn.Text = props.Name or "Button"
+    btn.BackgroundColor3 = theme.tabInactive
+    btn.TextColor3 = theme.text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 18
+    btn.Parent = parent
+    btn.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = btn
+    btn.MouseButton1Click:Connect(function()
+        if props.Callback then props.Callback() end
+    end)
+    return btn
 end
 
 function CustomGui:AddToggle(parent, props)
     local button = Instance.new("TextButton")
     button.Text = props.Name or "Toggle"
     button.Size = UDim2.new(0.98, 0, 0, 36)
-    button.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+    local theme = getThemeFor(parent)
+    button.BackgroundColor3 = theme.buttonOn
     button.TextColor3 = Color3.fromRGB(255,255,255)
     button.Font = Enum.Font.GothamBold
     button.TextSize = 20
@@ -270,14 +708,29 @@ function CustomGui:AddToggle(parent, props)
     uiCorner.CornerRadius = UDim.new(0, 8)
     uiCorner.Parent = button
     local state = props.Default or false
+    local changedCb = nil
     -- Immediately call the callback with the default value
-    button.BackgroundColor3 = state and Color3.fromRGB(60, 180, 75) or Color3.fromRGB(180, 60, 60)
+    button.BackgroundColor3 = state and theme.buttonOn or theme.buttonOff
     if props.Callback then props.Callback(state) end
     button.MouseButton1Click:Connect(function()
         state = not state
-        button.BackgroundColor3 = state and Color3.fromRGB(60, 180, 75) or Color3.fromRGB(180, 60, 60)
+        button.BackgroundColor3 = state and theme.buttonOn or theme.buttonOff
         if props.Callback then props.Callback(state) end
+        if changedCb then pcall(changedCb, state) end
     end)
+    function button:GetState() return state end
+    function button:SetState(v, fire)
+        local nv = not not v
+        if nv == state then return end
+        state = nv
+        button.BackgroundColor3 = state and theme.buttonOn or theme.buttonOff
+        if fire then
+            if props.Callback then props.Callback(state) end
+            if changedCb then pcall(changedCb, state) end
+        end
+    end
+    function button:OnChanged(cb) changedCb = cb end
+    button.ControlType = "Toggle"
     return button
 end
 
@@ -290,27 +743,30 @@ function CustomGui:AddSlider(parent, props)
 
     local label = Instance.new("TextLabel")
     label.Text = props.Name .. ": " .. tostring(props.Default or props.Min)
-    label.Size = UDim2.new(1, 0, 0, 18)
+    local sg = parent:FindFirstAncestorOfClass("ScreenGui")
+    local density = sg and sg:GetAttribute("Density") or "comfortable"
+    label.Size = UDim2.new(1, 0, 0, (density == "compact") and 16 or 18)
     label.Position = UDim2.new(0, 0, 0, 0)
     label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.fromRGB(200,200,200)
+    local theme = getThemeFor(parent)
+    label.TextColor3 = theme.text
     label.Font = Enum.Font.Gotham
     label.TextSize = 16
     label.Parent = sliderFrame
 
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(0.92, 0, 0, 8)
-    bar.Position = UDim2.new(0.04, 0, 0, 26)
-    bar.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    bar.Size = UDim2.new(0.92, 0, 0, (density == "compact") and 6 or 8)
+    bar.Position = UDim2.new(0.04, 0, 0, (density == "compact") and 22 or 26)
+    bar.BackgroundColor3 = theme.sliderBar
     bar.Parent = sliderFrame
     local barCorner = Instance.new("UICorner")
     barCorner.CornerRadius = UDim.new(0, 4)
     barCorner.Parent = bar
 
     local thumb = Instance.new("Frame")
-    thumb.Size = UDim2.new(0, 18, 0, 18)
-    thumb.Position = UDim2.new(0, 0, 0, -5)
-    thumb.BackgroundColor3 = Color3.fromRGB(100,100,255)
+    thumb.Size = UDim2.new(0, (density == "compact") and 14 or 18, 0, (density == "compact") and 14 or 18)
+    thumb.Position = UDim2.new(0, 0, 0, (density == "compact") and -4 or -5)
+    thumb.BackgroundColor3 = theme.sliderThumb
     thumb.Parent = bar
     local thumbCorner = Instance.new("UICorner")
     thumbCorner.CornerRadius = UDim.new(0, 9)
@@ -319,6 +775,7 @@ function CustomGui:AddSlider(parent, props)
     local value = props.Default or props.Min
     local min, max = props.Min, props.Max
     local dragging = false
+    local changedCb = nil
 
     local function setValue(newValue)
         value = math.clamp(newValue, min, max)
@@ -326,6 +783,7 @@ function CustomGui:AddSlider(parent, props)
         thumb.Position = UDim2.new(percent, -9, 0, -5)
         label.Text = props.Name .. ": " .. string.format("%.2f", value)
         if props.Callback then props.Callback(value) end
+        if changedCb then pcall(changedCb, value) end
     end
     setValue(value)
 
@@ -354,56 +812,517 @@ function CustomGui:AddSlider(parent, props)
             setValue(min + percent * (max - min))
         end
     end)
-
+    function sliderFrame:GetValue() return value end
+    function sliderFrame:SetValue(v, fire)
+        setValue(v)
+        if not fire then
+            -- prevent double-callback if fire is false: temporarily mute callbacks
+            local oldCb, oldChanged = props.Callback, changedCb
+            props.Callback, changedCb = nil, nil
+            setValue(v)
+            props.Callback, changedCb = oldCb, oldChanged
+        end
+    end
+    function sliderFrame:OnChanged(cb) changedCb = cb end
+    sliderFrame.ControlType = "Slider"
     return sliderFrame
 end
 
 function CustomGui:AddMultiDropdown(parent, props)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0.98, 0, 0, 44 + 32 * #props.Options)
-    frame.BackgroundColor3 = Color3.fromRGB(38,38,38)
+    local theme = getThemeFor(parent)
+    local sg = parent:FindFirstAncestorOfClass("ScreenGui")
+    local density = sg and sg:GetAttribute("Density") or "comfortable"
+    frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44)
+    frame.BackgroundColor3 = theme.dropdownBG
     frame.BackgroundTransparency = 0.18
     frame.Parent = parent
     frame.LayoutOrder = parent:GetChildren() and #parent:GetChildren() or 1
     local uiCorner = Instance.new("UICorner")
     uiCorner.CornerRadius = UDim.new(0, 8)
     uiCorner.Parent = frame
-    local label = Instance.new("TextLabel")
-    label.Text = props.Name or "Dropdown"
-    label.Size = UDim2.new(1, 0, 0, 28)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.fromRGB(255,255,255)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 18
-    label.Parent = frame
+    local header = Instance.new("TextButton")
+    header.Text = (props.Name or "Dropdown") .. "  ▾"
+    header.Size = UDim2.new(1, -8, 0, (density == "compact") and 26 or 30)
+    header.Position = UDim2.new(0, 4, 0, 6)
+    header.BackgroundTransparency = 1
+    header.TextColor3 = theme.text
+    header.Font = Enum.Font.GothamBold
+    header.TextSize = (density == "compact") and 16 or 18
+    header.Parent = frame
     local selected = {}
-    for i, option in ipairs(props.Options) do
+    local defaultsSet = false
+    if type(props.Default) == "table" then
+        for _, v in ipairs(props.Default) do selected[#selected+1] = v end
+        defaultsSet = true
+    end
+    -- Collapsible options panel
+    local panel = Instance.new("Frame")
+    panel.Name = "Options"
+    panel.Size = UDim2.new(1, -8, 0, 0)
+    panel.Position = UDim2.new(0, 4, 0, (density == "compact") and 32 or 38)
+    panel.BackgroundTransparency = 1
+    panel.Visible = false
+    panel.Parent = frame
+    local list = Instance.new("UIListLayout")
+    list.Parent = panel
+    list.Padding = UDim.new(0, (density == "compact") and 4 or 6)
+    list.SortOrder = Enum.SortOrder.LayoutOrder
+    local function rebuildHeight()
+        local h = 0
+        for _, c in ipairs(panel:GetChildren()) do if c:IsA("GuiObject") then h += c.AbsoluteSize.Y + ((density=="compact") and 4 or 6) end end
+        if #panel:GetChildren() > 0 then h -= ((density=="compact") and 4 or 6) end
+        panel.Size = UDim2.new(1, -8, 0, h)
+        frame.Size = UDim2.new(0.98, 0, 0, (density == "compact") and 36 or 44 + (panel.Visible and (h + ((density=="compact") and 4 or 6)) or 0))
+    end
+    header.MouseButton1Click:Connect(function()
+        panel.Visible = not panel.Visible
+        header.Text = (props.Name or "Dropdown") .. (panel.Visible and "  ▾" or "  ▸")
+        rebuildHeight()
+    end)
+    for _, option in ipairs(props.Options) do
         local optBtn = Instance.new("TextButton")
         optBtn.Text = option
-        optBtn.Size = UDim2.new(0.96, 0, 0, 28)
-        optBtn.Position = UDim2.new(0.02, 0, 0, 28 + 32 * (i-1))
-        optBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
-        optBtn.TextColor3 = Color3.fromRGB(255,255,255)
+        optBtn.Size = UDim2.new(0.96, 0, 0, (density == "compact") and 24 or 28)
+        optBtn.BackgroundColor3 = theme.dropdownOpt
+        optBtn.TextColor3 = theme.text
         optBtn.Font = Enum.Font.Gotham
-        optBtn.TextSize = 16
-        optBtn.Parent = frame
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 6)
-        btnCorner.Parent = optBtn
+        optBtn.TextSize = (density == "compact") and 14 or 16
+        optBtn.Parent = panel
+        local btnCorner = Instance.new("UICorner"); btnCorner.CornerRadius = UDim.new(0, 6); btnCorner.Parent = optBtn
+        if defaultsSet and table.find(selected, option) then optBtn.BackgroundColor3 = theme.buttonOn end
         optBtn.MouseButton1Click:Connect(function()
             if table.find(selected, option) then
-                for idx, val in ipairs(selected) do
-                    if val == option then table.remove(selected, idx) break end
-                end
-                optBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+                for idx, val in ipairs(selected) do if val == option then table.remove(selected, idx) break end end
+                optBtn.BackgroundColor3 = theme.dropdownOpt
             else
                 table.insert(selected, option)
-                optBtn.BackgroundColor3 = Color3.fromRGB(60,180,75)
+                optBtn.BackgroundColor3 = theme.buttonOn
             end
             if props.Callback then props.Callback(selected) end
         end)
     end
+    panel.ChildAdded:Connect(rebuildHeight)
+    panel.ChildRemoved:Connect(rebuildHeight)
+    task.defer(rebuildHeight)
+    function frame:GetSelected() return table.clone(selected) end
+    function frame:SetSelected(list, fire)
+        selected = {}
+        for _, v in ipairs(list or {}) do table.insert(selected, v) end
+        -- refresh visuals
+        for _, child in ipairs(frame:GetChildren()) do
+            if child:IsA("TextButton") then
+                if table.find(selected, child.Text) then
+                    child.BackgroundColor3 = theme.buttonOn
+                else
+                    child.BackgroundColor3 = theme.dropdownOpt
+                end
+            end
+        end
+        if fire and props.Callback then props.Callback(selected) end
+    end
+    frame.ControlType = "MultiDropdown"
+    -- Fire initial callback if defaults provided
+    if defaultsSet and props.Callback then props.Callback(frame:GetSelected()) end
     return frame
+end
+
+-- Window helpers: theme switch, utilities, keybinds, command palette, ESP, noclip, click TP
+do
+    function CustomGui:_applyThemeToWindow(win, themeName)
+        local theme = Themes[themeName] or Themes.Carbon
+        local sg = win.ScreenGui
+        if not sg then return end
+        sg:SetAttribute("ThemeName", themeName)
+        -- top-level frames
+        if win.mainFrame then win.mainFrame.BackgroundColor3 = theme.bg end
+        local topBar = win.mainFrame and win.mainFrame:FindFirstChild("TopBar")
+        if topBar then topBar.BackgroundColor3 = theme.top end
+        local tabBar = win.mainFrame and win.mainFrame:FindFirstChild("TabBar")
+        if tabBar then tabBar.BackgroundColor3 = theme.tab end
+        -- recolor tab buttons
+        if tabBar then
+            for _, child in ipairs(tabBar:GetChildren()) do
+                if child:IsA("TextButton") then
+                    child.TextColor3 = theme.text
+                    -- keep active visually if its content visible
+                    child.BackgroundColor3 = theme.tabInactive
+                end
+            end
+        end
+        -- recolor common controls in content
+        for _, fr in ipairs(win.mainFrame and win.mainFrame:GetChildren() or {}) do
+            if fr:IsA("ScrollingFrame") then
+                for _, c in ipairs(fr:GetChildren()) do
+                    if c:IsA("Frame") then
+                        if c.Name == "Section" or c:FindFirstChildOfClass("TextLabel") then
+                            pcall(function() c.BackgroundColor3 = theme.section end)
+                        end
+                    elseif c:IsA("TextButton") then
+                        pcall(function() c.TextColor3 = theme.text end)
+                    elseif c:IsA("TextLabel") then
+                        pcall(function() c.TextColor3 = theme.text end)
+                    end
+                end
+            end
+        end
+    end
+
+    function CustomGui:_ensureKeybindLoop(win)
+        if win._keybindConn then return end
+        win._keybinds = win._keybinds or {}
+        win._keybindConn = UIS.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                local list = win._keybinds[input.KeyCode]
+                if list then for _, cb in ipairs(list) do pcall(cb) end end
+            end
+        end)
+        win:RegisterTask("keybind-conn", win._keybindConn)
+    end
+
+    function CustomGui:_ensureCommandPalette(win, key)
+        if win._cmdGui then return end
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "CommandPalette"
+        sg.IgnoreGuiInset = true
+        sg.ResetOnSpawn = false
+        sg.DisplayOrder = 1_000_001
+        pcall(function() if Exec.protect_gui then Exec.protect_gui(sg) end end)
+        sg.Parent = choose_ui_parent()
+        local box = Instance.new("TextBox")
+        box.Size = UDim2.new(0, 420, 0, 36)
+        box.Position = UDim2.new(0.5, -210, 0.2, 0)
+        local theme = getThemeFor(win.ScreenGui)
+        box.BackgroundColor3 = theme.tab
+        box.TextColor3 = theme.text
+        box.PlaceholderText = "Type command (help)"
+        box.Font = Enum.Font.Gotham
+        box.TextSize = 18
+        box.Parent = sg
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = box
+        sg.Enabled = false
+        win._cmdGui = sg
+        win._cmdBox = box
+        -- toggle key
+        CustomGui:_ensureKeybindLoop(win)
+        win:BindKey(key or Enum.KeyCode.F2, function()
+            sg.Enabled = not sg.Enabled
+            if sg.Enabled then box:CaptureFocus() end
+        end)
+        box.FocusLost:Connect(function(enter)
+            if enter then
+                local text = box.Text
+                box.Text = ""
+                sg.Enabled = false
+                CustomGui:_execCommand(win, text)
+            end
+        end)
+    end
+
+    function CustomGui:_execCommand(win, text)
+        text = (text or ""):lower()
+        if text == "help" or text == "?" then
+            Exec.notify("Commands", "stopall, antiafk on/off, theme carbon/midnight/pastel, rejoin, hop, fps <n>", 8)
+            return
+        end
+        if text == "stopall" then win:StopAll(); return end
+        if text:match("^antiafk ") then
+            local arg = text:sub(8):gsub("%s+","")
+            win:EnableAntiAFK(arg=="on" or arg=="true" or arg=="1")
+            return
+        end
+        if text:match("^theme ") then
+            local name = text:sub(7):gsub("%s+","")
+            name = (name:gsub("^%l", string.upper))
+            if Themes[name] then
+                CustomGui:_applyThemeToWindow(win, name)
+            else
+                Exec.notify("Theme", "Unknown theme", 3)
+            end
+            return
+        end
+        if text == "rejoin" then pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end); return end
+        if text == "hop" or text == "serverhop" then CustomGui:_serverHop(); return end
+        local n = tonumber(text:match("^fps%s+(%d+)$"))
+        if n then CustomGui:_setFPS(n); return end
+        Exec.notify("Command", "Unknown command", 2)
+    end
+
+    function CustomGui:_setFPS(n)
+        local f = (setfpscap or set_fps_cap or setfps)
+        if f then pcall(f, n) else Exec.notify("FPS", "Executor doesn’t support fps cap", 3) end
+    end
+
+    function CustomGui:_serverHop()
+        local ok, err = pcall(function()
+            local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100", game.PlaceId)
+            local body
+            if http_request then
+                local res = http_request({Url=url, Method="GET"})
+                body = res and (res.Body or res.body)
+            else
+                body = game:HttpGet(url)
+            end
+            local data = HttpService:JSONDecode(body)
+            for _, s in ipairs(data.data or {}) do
+                if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id)
+                    return
+                end
+            end
+            TeleportService:Teleport(game.PlaceId)
+        end)
+        if not ok then pcall(function() TeleportService:Teleport(game.PlaceId) end) end
+    end
+
+    function CustomGui:_toggleESP(win)
+        local any = (win._esp and (win._esp.names or win._esp.highlight or win._esp.tracers)) and true or false
+        if any and not win._espLoop then
+            win._espData = win._espData or {}
+            win._espLoop = win:RunLoop("esp-loop", function()
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer then
+                        local char = plr.Character
+                        if char then
+                            -- Names (BillboardGui)
+                            if win._esp.names then
+                                local head = char:FindFirstChild("Head")
+                                if head then
+                                    local bb = head:FindFirstChild("_CG_Name")
+                                    if not bb then
+                                        bb = Instance.new("BillboardGui")
+                                        bb.Name = "_CG_Name"
+                                        bb.Size = UDim2.new(0, 0, 0, 0)
+                                        bb.AlwaysOnTop = true
+                                        bb.ExtentsOffset = Vector3.new(0, 2.5, 0)
+                                        bb.Parent = head
+                                        local tl = Instance.new("TextLabel")
+                                        tl.Name = "Text"
+                                        tl.BackgroundTransparency = 1
+                                        tl.Size = UDim2.new(0, 200, 0, 20)
+                                        tl.AnchorPoint = Vector2.new(0.5, 0.5)
+                                        tl.Position = UDim2.new(0.5, 0, 0.5, 0)
+                                        tl.TextScaled = true
+                                        tl.Font = Enum.Font.GothamBold
+                                        tl.Parent = bb
+                                    end
+                                    local tl = bb:FindFirstChild("Text")
+                                    if tl then
+                                        tl.Text = plr.DisplayName or plr.Name
+                                        if win._esp.teamColors and plr.Team and plr.TeamColor then
+                                            tl.TextColor3 = plr.TeamColor.Color
+                                        else
+                                            tl.TextColor3 = Color3.fromRGB(255,255,255)
+                                        end
+                                    end
+                                end
+                            else
+                                local head = char:FindFirstChild("Head")
+                                local bb = head and head:FindFirstChild("_CG_Name")
+                                if bb then bb:Destroy() end
+                            end
+                            -- Highlight
+                            if win._esp.highlight then
+                                local hl = char:FindFirstChildOfClass("Highlight")
+                                if not hl then
+                                    hl = Instance.new("Highlight")
+                                    hl.FillTransparency = 1
+                                    hl.OutlineTransparency = 0
+                                    hl.Parent = char
+                                end
+                                if win._esp.teamColors and plr.Team and plr.TeamColor then
+                                    hl.OutlineColor = plr.TeamColor.Color
+                                else
+                                    hl.OutlineColor = Color3.fromRGB(255, 50, 50)
+                                end
+                            else
+                                local hl = char:FindFirstChildOfClass("Highlight")
+                                if hl then hl:Destroy() end
+                            end
+                            -- Tracers (Drawing API if available)
+                            if win._esp.tracers and Drawing and typeof(Drawing.new) == "function" then
+                                local cam = workspace.CurrentCamera
+                                local root = char:FindFirstChild("HumanoidRootPart")
+                                if root and cam then
+                                    win._espData[plr] = win._espData[plr] or {}
+                                    local line = win._espData[plr].line
+                                    if not line then
+                                        line = Drawing.new("Line")
+                                        line.Thickness = 1.5
+                                        line.Transparency = 1
+                                        win._espData[plr].line = line
+                                    end
+                                    local from = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
+                                    local pos, onScreen = cam:WorldToViewportPoint(root.Position)
+                                    if onScreen then
+                                        line.Visible = true
+                                        line.From = from
+                                        line.To = Vector2.new(pos.X, pos.Y)
+                                        line.Color = (win._esp.teamColors and plr.Team and plr.TeamColor and plr.TeamColor.Color) or Color3.fromRGB(255, 255, 255)
+                                    else
+                                        line.Visible = false
+                                    end
+                                end
+                            else
+                                -- destroy tracer if exists
+                                local d = win._espData and win._espData[plr]
+                                if d and d.line and d.line.Remove then pcall(function() d.line:Remove() end) end
+                                if d then d.line = nil end
+                            end
+                        end
+                    end
+                end
+            end, 0.25)
+        elseif (not any) and win._espLoop then
+            pcall(win._espLoop) -- stop function
+            win._espLoop = nil
+            -- cleanup adornments
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character then
+                    local head = plr.Character:FindFirstChild("Head")
+                    local bb = head and head:FindFirstChild("_CG_Name")
+                    if bb then bb:Destroy() end
+                    local hl = plr.Character:FindFirstChildOfClass("Highlight")
+                    if hl then hl:Destroy() end
+                end
+            end
+            if win._espData then
+                for _, d in pairs(win._espData) do
+                    if d.line and d.line.Remove then pcall(function() d.line:Remove() end) end
+                end
+                win._espData = {}
+            end
+        end
+    end
+
+    function CustomGui:_enableNoclip(win, state)
+        state = not not state
+        if state and not win._noclipConn then
+            win._noclipConn = RunService.Stepped:Connect(function()
+                local char = LocalPlayer.Character
+                if not char then return end
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
+                end
+            end)
+            win:RegisterTask("noclip", win._noclipConn)
+        elseif (not state) and win._noclipConn then
+            pcall(function() win._noclipConn:Disconnect() end)
+            win._noclipConn = nil
+        end
+    end
+
+    function CustomGui:_enableClickTP(win, state, modifierKey)
+        state = not not state
+        win._clickTPMod = modifierKey or Enum.KeyCode.LeftControl
+        if state and not win._clickTPConn then
+            local mouse = LocalPlayer:GetMouse()
+            win._clickTPConn = mouse.Button1Down:Connect(function()
+                if not UIS:IsKeyDown(win._clickTPMod) then return end
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                local pos = mouse.Hit and mouse.Hit.p
+                if pos then
+                    hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+                end
+            end)
+            win:RegisterTask("clicktp", win._clickTPConn)
+        elseif (not state) and win._clickTPConn then
+            pcall(function() win._clickTPConn:Disconnect() end)
+            win._clickTPConn = nil
+        end
+    end
+
+    function CustomGui:_buildUtilitiesTab(win)
+        local tab = win:MakeTab({ Name = "Utilities" })
+        -- Anti-AFK
+        CustomGui:AddToggle(tab, { Name = "Anti-AFK", Default = win._antiAFKEnabled, Callback = function(on)
+            win:EnableAntiAFK(on)
+        end })
+
+        -- ESP toggles
+        win._esp = win._esp or { names=false, highlight=false, tracers=false, teamColors=true }
+        CustomGui:AddToggle(tab, { Name = "ESP Names", Default = false, Callback = function(on)
+            win._esp.names = on; CustomGui:_toggleESP(win)
+        end })
+        CustomGui:AddToggle(tab, { Name = "ESP Highlight", Default = false, Callback = function(on)
+            win._esp.highlight = on; CustomGui:_toggleESP(win)
+        end })
+        local drawingAvail = (Drawing and typeof(Drawing.new) == "function")
+        CustomGui:AddToggle(tab, { Name = "ESP Tracers" .. (drawingAvail and "" or " (Unavailable)"), Default = false, Callback = function(on)
+            if drawingAvail then win._esp.tracers = on; CustomGui:_toggleESP(win) else Exec.notify("ESP", "Drawing API not available", 3) end
+        end })
+        CustomGui:AddToggle(tab, { Name = "ESP Team Colors", Default = true, Callback = function(on)
+            win._esp.teamColors = on; CustomGui:_toggleESP(win)
+        end })
+
+        -- Noclip & Click TP
+        CustomGui:AddToggle(tab, { Name = "Noclip", Default = false, Callback = function(on)
+            CustomGui:_enableNoclip(win, on)
+        end })
+        CustomGui:AddToggle(tab, { Name = "Click TP (Hold Ctrl)", Default = false, Callback = function(on)
+            CustomGui:_enableClickTP(win, on, Enum.KeyCode.LeftControl)
+        end })
+
+        -- FPS Cap
+        CustomGui:AddSlider(tab, { Name = "FPS Cap", Min = 30, Max = 360, Default = 60, Callback = function(v)
+            CustomGui:_setFPS(math.floor(v))
+        end })
+
+        -- Server actions
+        CustomGui:AddButton(tab, { Name = "Rejoin", Callback = function()
+            pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+        end })
+        CustomGui:AddButton(tab, { Name = "Server Hop", Callback = function()
+            CustomGui:_serverHop()
+        end })
+
+        -- Themes quick switch
+        CustomGui:AddLabel(tab, "Themes")
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(0.98, 0, 0, 40)
+        row.BackgroundTransparency = 1
+        row.Parent = tab
+        row.LayoutOrder = tab:GetChildren() and #tab:GetChildren() or 1
+        local list = Instance.new("UIListLayout")
+        list.Parent = row
+        list.FillDirection = Enum.FillDirection.Horizontal
+        list.Padding = UDim.new(0, 8)
+        local function themeBtn(name)
+            return CustomGui:AddButton(row, { Name = name, Callback = function()
+                CustomGui:_applyThemeToWindow(win, name)
+            end })
+        end
+        themeBtn("Carbon"); themeBtn("Midnight"); themeBtn("Pastel")
+
+        -- Keybinds & Command palette
+        CustomGui:_ensureKeybindLoop(win)
+        CustomGui:_ensureCommandPalette(win, Enum.KeyCode.F2)
+        return tab
+    end
+
+    -- Public window APIs
+    function CustomGui:BuildUtilitiesTab(win)
+        return CustomGui:_buildUtilitiesTab(win)
+    end
+
+    function CustomGui:SetTheme(win, name)
+        CustomGui:_applyThemeToWindow(win, name)
+    end
+
+    function CustomGui:BindKey(win, keyCode, cb)
+        CustomGui:_ensureKeybindLoop(win)
+        win._keybinds[keyCode] = win._keybinds[keyCode] or {}
+        table.insert(win._keybinds[keyCode], cb)
+        return function()
+            local t = win._keybinds[keyCode]
+            if not t then return end
+            for i, f in ipairs(t) do if f == cb then table.remove(t, i) break end end
+        end
+    end
 end
 
 return CustomGui
