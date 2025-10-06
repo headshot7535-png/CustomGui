@@ -250,6 +250,18 @@ function CustomGui:CreateWindow(props)
     reopenCorner.CornerRadius = UDim.new(0, 14)
     reopenCorner.Parent = reopenBtn
 
+    -- Ensure the reopen icon is visible within the screen when shown
+    local function ensureReopenVisible()
+        local scr = screenGui.AbsoluteSize
+        local btn = reopenBtn.AbsoluteSize
+        local pos = reopenBtn.AbsolutePosition
+        local nx = math.clamp(pos.X, 0, math.max(0, scr.X - btn.X))
+        local ny = math.clamp(pos.Y, 0, math.max(0, scr.Y - btn.Y))
+        if nx ~= pos.X or ny ~= pos.Y then
+            reopenBtn.Position = UDim2.new(0, nx, 0, ny)
+        end
+    end
+
     -- Optional keybind to show/hide (RightShift default)
     local toggleKey = props.ToggleKey or Enum.KeyCode.RightShift
     UIS.InputBegan:Connect(function(input, gp)
@@ -258,6 +270,7 @@ function CustomGui:CreateWindow(props)
             if mainFrame.Visible then
                 mainFrame.Visible = false
                 reopenBtn.Visible = true
+                ensureReopenVisible()
             else
                 mainFrame.Visible = true
                 reopenBtn.Visible = false
@@ -296,6 +309,7 @@ function CustomGui:CreateWindow(props)
         if self.mainFrame then self.mainFrame.Visible = false end
         if self.ScreenGui then self.ScreenGui.Enabled = true end
         if self.reopenBtn then self.reopenBtn.Visible = true end
+        ensureReopenVisible()
         if self._closeCb then pcall(self._closeCb) end
     end
 
@@ -463,6 +477,7 @@ function CustomGui:CreateWindow(props)
                     reopenBtn.Position = UDim2.new(0, math.floor(x + 0.5), 0, math.floor(y + 0.5))
                 end
             end
+            ensureReopenVisible()
         end
         task.defer(applySavedReopenPos)
         screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applySavedReopenPos)
@@ -500,9 +515,8 @@ function CustomGui:CreateWindow(props)
         UIS.InputChanged:Connect(function(input)
             if not rDragging then return end
             if input.UserInputType == Enum.UserInputType.MouseMovement then
-                -- Use global mouse location so dragging continues off the button
-                local loc = UIS:GetMouseLocation()
-                local delta = Vector2.new(loc.X, loc.Y) - Vector2.new(rDragStart.X, rDragStart.Y)
+                -- Use the event's position to avoid GUI inset offsets
+                local delta = Vector2.new(input.Position.X - rDragStart.X, input.Position.Y - rDragStart.Y)
                 movedMag = math.max(movedMag, delta.Magnitude)
                 local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
                 reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
@@ -545,6 +559,7 @@ function CustomGui:CreateWindow(props)
     minimizeBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
         reopenBtn.Visible = true
+        ensureReopenVisible()
     end)
     -- MouseButton1Click is handled in InputEnded above to avoid triggering when dragging
 
@@ -573,8 +588,8 @@ function CustomGui:CreateWindow(props)
     game:GetService("UserInputService").InputChanged:Connect(function(input)
         if not dragging then return end
         if input.UserInputType == Enum.UserInputType.MouseMovement then
-            local loc = UIS:GetMouseLocation()
-            local delta = Vector2.new(loc.X, loc.Y) - Vector2.new(dragStart.X, dragStart.Y)
+            -- Use InputChanged's Position to avoid inset mismatch
+            local delta = Vector2.new(input.Position.X - dragStart.X, input.Position.Y - dragStart.Y)
             local newX = startAbs.X + delta.X
             local newY = startAbs.Y + delta.Y
             mainFrame.Position = UDim2.new(0, newX, 0, newY)
