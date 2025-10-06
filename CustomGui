@@ -536,32 +536,15 @@ function CustomGui:CreateWindow(props)
                 rDragging = true
                 rDragStart = input.Position
                 rStartPos = reopenBtn.AbsolutePosition
-                -- Track the originating touch; for mouse we don't need to match a specific InputObject
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    rDragInput = input
-                else
-                    rDragInput = nil
-                end
                 movedMag = 0
             end
         end)
-        reopenBtn.InputChanged:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                -- Keep the active touch reference up to date (best-effort)
-                if input.UserInputType == Enum.UserInputType.Touch then rDragInput = input end
-            end
-        end)
+
         UIS.InputChanged:Connect(function(input)
             if not rDragging then return end
-            if input.UserInputType == Enum.UserInputType.MouseMovement then
-                -- Use the event's position to avoid GUI inset offsets
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                -- Use the event's position to avoid GUI inset offsets - works anywhere on screen
                 local delta = Vector2.new(input.Position.X - rDragStart.X, input.Position.Y - rDragStart.Y)
-                movedMag = math.max(movedMag, delta.Magnitude)
-                local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
-                reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
-            elseif input.UserInputType == Enum.UserInputType.Touch then
-                -- For touch, accept any movement while dragging (robust across platforms)
-                local delta = input.Position - rDragStart
                 movedMag = math.max(movedMag, delta.Magnitude)
                 local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
                 reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
@@ -570,7 +553,7 @@ function CustomGui:CreateWindow(props)
         local function finishIconDragOrClick()
             if not rDragging then return end
             rDragging = false
-            if movedMag > 0 then
+            if movedMag > 8 then
                 -- Save position without clamping - allow anywhere
                 saveReopenPos()
                 -- Make absolutely sure it's visible
