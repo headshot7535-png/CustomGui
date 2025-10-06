@@ -245,6 +245,7 @@ function CustomGui:CreateWindow(props)
     reopenBtn.TextSize = 28
     reopenBtn.Visible = false
     reopenBtn.Parent = screenGui
+    reopenBtn.ZIndex = 100 -- keep on top of other UI
     local reopenCorner = Instance.new("UICorner")
     reopenCorner.CornerRadius = UDim.new(0, 14)
     reopenCorner.Parent = reopenBtn
@@ -555,12 +556,12 @@ function CustomGui:CreateWindow(props)
     -- MouseButton1Click is handled in InputEnded above to avoid triggering when dragging
 
     -- Dragging logic
-    local dragging, dragInput, dragStart, startPos
+    local dragging, dragInput, dragStart, startAbs
     topBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
-            startPos = mainFrame.Position
+            startAbs = mainFrame.AbsolutePosition -- work in pixels for robust drag
             -- For touch, remember the finger; for mouse, we'll use global mouse movement
             if input.UserInputType == Enum.UserInputType.Touch then
                 dragInput = input
@@ -581,11 +582,19 @@ function CustomGui:CreateWindow(props)
         if input.UserInputType == Enum.UserInputType.MouseMovement then
             local loc = UIS:GetMouseLocation()
             local delta = Vector2.new(loc.X, loc.Y) - Vector2.new(dragStart.X, dragStart.Y)
-            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            local scr = screenGui.AbsoluteSize
+            local mf = mainFrame.AbsoluteSize
+            local newX = math.clamp(startAbs.X + delta.X, 0, math.max(0, scr.X - mf.X))
+            local newY = math.clamp(startAbs.Y + delta.Y, 0, math.max(0, scr.Y - mf.Y))
+            mainFrame.Position = UDim2.new(0, newX, 0, newY)
         elseif input.UserInputType == Enum.UserInputType.Touch then
             if (dragInput == nil) or (input == dragInput) then
                 local delta = input.Position - dragStart
-                mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                local scr = screenGui.AbsoluteSize
+                local mf = mainFrame.AbsoluteSize
+                local newX = math.clamp(startAbs.X + delta.X, 0, math.max(0, scr.X - mf.X))
+                local newY = math.clamp(startAbs.Y + delta.Y, 0, math.max(0, scr.Y - mf.Y))
+                mainFrame.Position = UDim2.new(0, newX, 0, newY)
             end
         end
     end)
