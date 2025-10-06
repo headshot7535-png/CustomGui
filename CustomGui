@@ -199,6 +199,17 @@ function CustomGui:CreateWindow(props)
     topCorner.CornerRadius = UDim.new(0, 18)
     topCorner.Parent = topBar
 
+    -- Drag shield (prevents accidental clicks on controls while dragging the window)
+    local dragShield = Instance.new("Frame")
+    dragShield.Name = "DragShield"
+    dragShield.BackgroundTransparency = 1
+    dragShield.Active = true
+    dragShield.Visible = false
+    dragShield.ZIndex = 999
+    dragShield.Size = UDim2.new(1, 0, 1, 0)
+    dragShield.Position = UDim2.new(0, 0, 0, 0)
+    dragShield.Parent = mainFrame
+
     local title = Instance.new("TextLabel")
     title.Text = props.Name or "CustomWindow"
     title.Size = UDim2.new(1, -80, 1, 0)
@@ -463,6 +474,24 @@ function CustomGui:CreateWindow(props)
     -- Draggable reopen button with persisted position (initialized after CreateStore is available)
     do
         windowObj._uiStore = windowObj:CreateStore("ui")
+        -- Apply saved window position (pixels) if exists
+        local function applySavedWindowPos()
+            local saved = windowObj._uiStore and windowObj._uiStore:Get("windowPos")
+            if type(saved) == "table" then
+                if typeof(saved.ox) == "number" and typeof(saved.oy) == "number" then
+                    mainFrame.Position = UDim2.new(0, saved.ox, 0, saved.oy)
+                elseif typeof(saved.sx) == "number" and typeof(saved.sy) == "number" then
+                    -- Backward compatibility for normalized saved values
+                    local scr = screenGui.AbsoluteSize
+                    local fr = mainFrame.AbsoluteSize
+                    local x = saved.sx * math.max(0, scr.X - fr.X)
+                    local y = saved.sy * math.max(0, scr.Y - fr.Y)
+                    mainFrame.Position = UDim2.new(0, math.floor(x + 0.5), 0, math.floor(y + 0.5))
+                end
+            end
+        end
+        task.defer(applySavedWindowPos)
+        screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applySavedWindowPos)
         local function applySavedReopenPos()
             local saved = windowObj._uiStore and windowObj._uiStore:Get("reopenPos")
             if type(saved) == "table" then
@@ -563,48 +592,102 @@ function CustomGui:CreateWindow(props)
     end)
     -- MouseButton1Click is handled in InputEnded above to avoid triggering when dragging
 
-    -- Dragging logic
-    local dragging, dragInput, dragStart, startAbs
-    topBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startAbs = mainFrame.AbsolutePosition -- work in pixels for robust drag
-            -- For touch, remember the finger; for mouse, we'll use global mouse movement
-            if input.UserInputType == Enum.UserInputType.Touch then
-                dragInput = input
-            else
-                dragInput = nil
-            end
+    -- Dragging logic: drag from top areas immediately, or long-press anywhere else
+    local wDragging, wPending, wDragInput, wDragStart, wStartPos
+    local wMovedMag = 0
+    local wHoldToken = nil
+    local function saveWindowPos()
+        if not windowObj._uiStore then return end
+        local pos = mainFrame.AbsolutePosition
+        windowObj._uiStore:Set("windowPos", { ox = pos.X, oy = pos.Y })
+    end
+    local function beginWindowDrag(input)
+        wDragging = true
+        wPending = false
+        wDragStart = input.Position
+        wStartPos = mainFrame.AbsolutePosition
+        wMovedMag = 0
+        dragShield.Visible = true
+        if input.UserInputType == Enum.UserInputType.Touch then
+            wDragInput = input
+        else
+            wDragInput = nil
         end
-    end)
-    topBar.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            if input.UserInputType == Enum.UserInputType.Touch then
-                dragInput = input
-            end
+    end
+    local function pointInFrame(p, fr)
+        local a = fr.AbsolutePosition; local s = fr.AbsoluteSize
+        return p.X >= a.X and p.X <= a.X + s.X and p.Y >= a.Y and p.Y <= a.Y + s.Y
+    end
+    local function considerStart(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        local pos = input.Position
+        -- Start immediately if press happened over TopBar or TabBar
+        local tabBar = mainFrame:FindFirstChild("TabBar")
+        if pointInFrame(pos, topBar) or (tabBar and pointInFrame(pos, tabBar)) then
+            beginWindowDrag(input)
+            return
         end
-    end)
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if not dragging then return end
+        -- Else, long-press to drag anywhere
+        wPending = true
+        wDragStart = input.Position
+        wStartPos = mainFrame.AbsolutePosition
+        wMovedMag = 0
+        if input.UserInputType == Enum.UserInputType.Touch then wDragInput = input else wDragInput = nil end
+        local token = {}
+        wHoldToken = token
+        task.delay(0.22, function()
+            if wPending and wHoldToken == token then
+                beginWindowDrag(input)
+            end
+        end)
+    end
+    local function updateDrag(input)
+        if not wDragging then
+            if wPending then
+                local delta = Vector2.new(input.Position.X - wDragStart.X, input.Position.Y - wDragStart.Y)
+                wMovedMag = math.max(wMovedMag, delta.Magnitude)
+                if wMovedMag > 8 then
+                    beginWindowDrag(input)
+                end
+            end
+            return
+        end
         if input.UserInputType == Enum.UserInputType.MouseMovement then
-            -- Use InputChanged's Position to avoid inset mismatch
-            local delta = Vector2.new(input.Position.X - dragStart.X, input.Position.Y - dragStart.Y)
-            local newX = startAbs.X + delta.X
-            local newY = startAbs.Y + delta.Y
-            mainFrame.Position = UDim2.new(0, newX, 0, newY)
+            local delta = Vector2.new(input.Position.X - wDragStart.X, input.Position.Y - wDragStart.Y)
+            wMovedMag = math.max(wMovedMag, delta.Magnitude)
+            local newAbs = Vector2.new(wStartPos.X + delta.X, wStartPos.Y + delta.Y)
+            mainFrame.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
         elseif input.UserInputType == Enum.UserInputType.Touch then
-            if (dragInput == nil) or (input == dragInput) then
-                local delta = input.Position - dragStart
-                local newX = startAbs.X + delta.X
-                local newY = startAbs.Y + delta.Y
-                mainFrame.Position = UDim2.new(0, newX, 0, newY)
+            if (wDragInput == nil) or (input == wDragInput) then
+                local delta = input.Position - wDragStart
+                wMovedMag = math.max(wMovedMag, delta.Magnitude)
+                local newAbs = Vector2.new(wStartPos.X + delta.X, wStartPos.Y + delta.Y)
+                mainFrame.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
             end
         end
+    end
+    mainFrame.InputBegan:Connect(function(input)
+        considerStart(input)
     end)
-    topBar.InputEnded:Connect(function(input)
+    mainFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            updateDrag(input)
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            updateDrag(input)
+        end
+    end)
+    mainFrame.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
+            if wDragging then
+                wDragging = false
+                dragShield.Visible = false
+                saveWindowPos()
+            end
+            wPending = false
+            wHoldToken = nil
         end
     end)
 
