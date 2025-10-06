@@ -708,29 +708,17 @@ function CustomGui:AddToggle(parent, props)
     uiCorner.CornerRadius = UDim.new(0, 8)
     uiCorner.Parent = button
     local state = props.Default or false
-    local changedCb = nil
-    -- Immediately call the callback with the default value
+    -- store state as attribute for observability (no custom members on Instance)
+    pcall(function() button:SetAttribute("CG_State", state) end)
+    -- Immediately call the callback with the default value and set visuals
     button.BackgroundColor3 = state and theme.buttonOn or theme.buttonOff
     if props.Callback then props.Callback(state) end
     button.MouseButton1Click:Connect(function()
         state = not state
+        pcall(function() button:SetAttribute("CG_State", state) end)
         button.BackgroundColor3 = state and theme.buttonOn or theme.buttonOff
         if props.Callback then props.Callback(state) end
-        if changedCb then pcall(changedCb, state) end
     end)
-    function button:GetState() return state end
-    function button:SetState(v, fire)
-        local nv = not not v
-        if nv == state then return end
-        state = nv
-        button.BackgroundColor3 = state and theme.buttonOn or theme.buttonOff
-        if fire then
-            if props.Callback then props.Callback(state) end
-            if changedCb then pcall(changedCb, state) end
-        end
-    end
-    function button:OnChanged(cb) changedCb = cb end
-    button.ControlType = "Toggle"
     return button
 end
 
@@ -812,19 +800,9 @@ function CustomGui:AddSlider(parent, props)
             setValue(min + percent * (max - min))
         end
     end)
-    function sliderFrame:GetValue() return value end
-    function sliderFrame:SetValue(v, fire)
-        setValue(v)
-        if not fire then
-            -- prevent double-callback if fire is false: temporarily mute callbacks
-            local oldCb, oldChanged = props.Callback, changedCb
-            props.Callback, changedCb = nil, nil
-            setValue(v)
-            props.Callback, changedCb = oldCb, oldChanged
-        end
-    end
-    function sliderFrame:OnChanged(cb) changedCb = cb end
-    sliderFrame.ControlType = "Slider"
+    -- expose current value as attribute for simple external reads
+    pcall(function() sliderFrame:SetAttribute("CG_Value", value) end)
+    -- remove custom methods on Instance to avoid 'not a valid member'
     return sliderFrame
 end
 
@@ -905,25 +883,9 @@ function CustomGui:AddMultiDropdown(parent, props)
     panel.ChildAdded:Connect(rebuildHeight)
     panel.ChildRemoved:Connect(rebuildHeight)
     task.defer(rebuildHeight)
-    function frame:GetSelected() return table.clone(selected) end
-    function frame:SetSelected(list, fire)
-        selected = {}
-        for _, v in ipairs(list or {}) do table.insert(selected, v) end
-        -- refresh visuals
-        for _, child in ipairs(frame:GetChildren()) do
-            if child:IsA("TextButton") then
-                if table.find(selected, child.Text) then
-                    child.BackgroundColor3 = theme.buttonOn
-                else
-                    child.BackgroundColor3 = theme.dropdownOpt
-                end
-            end
-        end
-        if fire and props.Callback then props.Callback(selected) end
-    end
-    frame.ControlType = "MultiDropdown"
+    -- Cannot attach custom methods to Instances; rely on callback to report selection
     -- Fire initial callback if defaults provided
-    if defaultsSet and props.Callback then props.Callback(frame:GetSelected()) end
+    if defaultsSet and props.Callback then props.Callback(table.clone(selected)) end
     return frame
 end
 
