@@ -281,6 +281,7 @@ function CustomGui:CreateWindow(props)
             if mainFrame.Visible then
                 mainFrame.Visible = false
                 reopenBtn.Visible = true
+                dragShield.Visible = false
                 ensureReopenVisible()
             else
                 mainFrame.Visible = true
@@ -320,6 +321,7 @@ function CustomGui:CreateWindow(props)
         if self.mainFrame then self.mainFrame.Visible = false end
         if self.ScreenGui then self.ScreenGui.Enabled = true end
         if self.reopenBtn then self.reopenBtn.Visible = true end
+        dragShield.Visible = false
         ensureReopenVisible()
         if self._closeCb then pcall(self._closeCb) end
     end
@@ -588,14 +590,15 @@ function CustomGui:CreateWindow(props)
     minimizeBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
         reopenBtn.Visible = true
+        dragShield.Visible = false
         ensureReopenVisible()
     end)
     -- MouseButton1Click is handled in InputEnded above to avoid triggering when dragging
 
-    -- Dragging logic: drag from top areas immediately, or long-press anywhere else
+    -- Dragging logic: instant threshold-based drag from anywhere
     local wDragging, wPending, wDragInput, wDragStart, wStartPos
     local wMovedMag = 0
-    local wHoldToken = nil
+    local DRAG_SLOP = 6 -- pixels of movement before we consider it a drag
     local function saveWindowPos()
         if not windowObj._uiStore then return end
         local pos = mainFrame.AbsolutePosition
@@ -614,43 +617,24 @@ function CustomGui:CreateWindow(props)
             wDragInput = nil
         end
     end
-    local function pointInFrame(p, fr)
-        local a = fr.AbsolutePosition; local s = fr.AbsoluteSize
-        return p.X >= a.X and p.X <= a.X + s.X and p.Y >= a.Y and p.Y <= a.Y + s.Y
-    end
-    local function considerStart(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        local pos = input.Position
-        -- Start immediately if press happened over TopBar or TabBar
-        local tabBar = mainFrame:FindFirstChild("TabBar")
-        if pointInFrame(pos, topBar) or (tabBar and pointInFrame(pos, tabBar)) then
-            beginWindowDrag(input)
-            return
+    local function endWindowDrag()
+        if wDragging or wPending then
+            wDragging = false
+            wPending = false
+            dragShield.Visible = false
+            saveWindowPos()
         end
-        -- Else, long-press to drag anywhere
-        wPending = true
-        wDragStart = input.Position
-        wStartPos = mainFrame.AbsolutePosition
-        wMovedMag = 0
-        if input.UserInputType == Enum.UserInputType.Touch then wDragInput = input else wDragInput = nil end
-        local token = {}
-        wHoldToken = token
-        task.delay(0.22, function()
-            if wPending and wHoldToken == token then
-                beginWindowDrag(input)
-            end
-        end)
     end
     local function updateDrag(input)
         if not wDragging then
-            if wPending then
-                local delta = Vector2.new(input.Position.X - wDragStart.X, input.Position.Y - wDragStart.Y)
-                wMovedMag = math.max(wMovedMag, delta.Magnitude)
-                if wMovedMag > 8 then
-                    beginWindowDrag(input)
-                end
+            if not wPending then return end
+            local delta = Vector2.new(input.Position.X - wDragStart.X, input.Position.Y - wDragStart.Y)
+            wMovedMag = math.max(wMovedMag, delta.Magnitude)
+            if wMovedMag >= DRAG_SLOP then
+                beginWindowDrag(input)
+            else
+                return
             end
-            return
         end
         if input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = Vector2.new(input.Position.X - wDragStart.X, input.Position.Y - wDragStart.Y)
@@ -667,7 +651,14 @@ function CustomGui:CreateWindow(props)
         end
     end
     mainFrame.InputBegan:Connect(function(input)
-        considerStart(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            wPending = true
+            wDragging = false
+            wDragStart = input.Position
+            wStartPos = mainFrame.AbsolutePosition
+            wMovedMag = 0
+            if input.UserInputType == Enum.UserInputType.Touch then wDragInput = input else wDragInput = nil end
+        end
     end)
     mainFrame.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
@@ -681,13 +672,12 @@ function CustomGui:CreateWindow(props)
     end)
     mainFrame.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if wDragging then
-                wDragging = false
-                dragShield.Visible = false
-                saveWindowPos()
-            end
-            wPending = false
-            wHoldToken = nil
+            endWindowDrag()
+        end
+    end)
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            endWindowDrag()
         end
     end)
 
