@@ -1572,6 +1572,987 @@ do
             CustomGui:_searchInGUI(child, searchText, found, path .. "." .. child.Name)
         end
     end
+    
+    function CustomGui:_createSearchInput(win)
+        -- Create a simple input dialog
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "SearchInput"
+        sg.IgnoreGuiInset = true
+        sg.ResetOnSpawn = false
+        sg.DisplayOrder = 1_000_002
+        pcall(function() if Exec.protect_gui then Exec.protect_gui(sg) end end)
+        sg.Parent = choose_ui_parent()
+        
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(0, 400, 0, 150)
+        frame.Position = UDim2.new(0.5, -200, 0.5, -75)
+        frame.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
+        frame.Parent = sg
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 12)
+        corner.Parent = frame
+        
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, 0, 0, 40)
+        title.Position = UDim2.new(0, 0, 0, 0)
+        title.BackgroundTransparency = 1
+        title.Text = "Enter Search Term"
+        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 18
+        title.Parent = frame
+        
+        local textBox = Instance.new("TextBox")
+        textBox.Size = UDim2.new(1, -20, 0, 35)
+        textBox.Position = UDim2.new(0, 10, 0, 50)
+        textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+        textBox.PlaceholderText = "Type search term (e.g., Auto Wave, Shop, Settings)"
+        textBox.Font = Enum.Font.Gotham
+        textBox.TextSize = 16
+        textBox.Parent = frame
+        
+        local boxCorner = Instance.new("UICorner")
+        boxCorner.CornerRadius = UDim.new(0, 6)
+        boxCorner.Parent = textBox
+        
+        local searchBtn = Instance.new("TextButton")
+        searchBtn.Size = UDim2.new(0, 80, 0, 30)
+        searchBtn.Position = UDim2.new(0, 10, 1, -40)
+        searchBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+        searchBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        searchBtn.Text = "Search"
+        searchBtn.Font = Enum.Font.GothamBold
+        searchBtn.TextSize = 14
+        searchBtn.Parent = frame
+        
+        local searchCorner = Instance.new("UICorner")
+        searchCorner.CornerRadius = UDim.new(0, 6)
+        searchCorner.Parent = searchBtn
+        
+        local cancelBtn = Instance.new("TextButton")
+        cancelBtn.Size = UDim2.new(0, 80, 0, 30)
+        cancelBtn.Position = UDim2.new(1, -90, 1, -40)
+        cancelBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+        cancelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        cancelBtn.Text = "Cancel"
+        cancelBtn.Font = Enum.Font.GothamBold
+        cancelBtn.TextSize = 14
+        cancelBtn.Parent = frame
+        
+        local cancelCorner = Instance.new("UICorner")
+        cancelCorner.CornerRadius = UDim.new(0, 6)
+        cancelCorner.Parent = cancelBtn
+        
+        local function doSearch()
+            local searchTerm = textBox.Text:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
+            if searchTerm ~= "" then
+                sg:Destroy()
+                win._lastFound = CustomGui:_findGUIElement(searchTerm)
+                CustomGui:_displayFoundElements(win, win._lastFound)
+            end
+        end
+        
+        searchBtn.MouseButton1Click:Connect(doSearch)
+        cancelBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+        textBox.FocusLost:Connect(function(enterPressed)
+            if enterPressed then doSearch() end
+        end)
+        
+        -- Auto-focus the text box
+        task.defer(function() textBox:CaptureFocus() end)
+    end
+    
+    function CustomGui:_displayFoundElements(win, found)
+        if not found or #found == 0 then
+            print("No GUI elements found")
+            Exec.notify("GUI Finder", "No elements found", 3)
+            return
+        end
+        
+        print("=== GUI FINDER RESULTS ===")
+        print("Found " .. #found .. " elements:")
+        print("")
+        
+        for i, item in ipairs(found) do
+            print("Result #" .. i .. ":")
+            print("  Text: '" .. item.text .. "'")
+            print("  Path: " .. item.path)
+            print("  Type: " .. item.type)
+            print("  Visible: " .. tostring(item.visible))
+            print("  Clickable: " .. tostring(item.clickable))
+            if item.clickable then
+                print("  -> Use 'Click Result #" .. i .. "' button to click this")
+            end
+            print("")
+        end
+        
+        print("=== END RESULTS ===")
+        Exec.notify("GUI Finder", "Found " .. #found .. " elements - check console", 5)
+    end
+    
+    function CustomGui:_clickFoundElement(win, index)
+        if not win._lastFound or not win._lastFound[index] then
+            Exec.notify("GUI Click", "No element #" .. index .. " found", 3)
+            print("No element at index " .. index .. ". Search for elements first.")
+            return
+        end
+        
+        local item = win._lastFound[index]
+        if not item.clickable then
+            Exec.notify("GUI Click", "Element #" .. index .. " not clickable", 3)
+            print("Element #" .. index .. " is not clickable (Type: " .. item.type .. ")")
+            return
+        end
+        
+        local success = false
+        pcall(function()
+            if item.object and (item.object:IsA("TextButton") or item.object:IsA("ImageButton")) then
+                -- Try different methods to click
+                if item.object.MouseButton1Click then
+                    -- Method 1: Fire the event directly
+                    item.object.MouseButton1Click:Fire()
+                    success = true
+                end
+                
+                -- Method 2: Try getconnections (if available)
+                if not success and getconnections then
+                    for _, connection in pairs(getconnections(item.object.MouseButton1Click)) do
+                        pcall(function() connection:Fire() end)
+                        success = true
+                    end
+                end
+            end
+        end)
+        
+        if success then
+            Exec.notify("GUI Click", "Clicked: " .. (item.text ~= "" and item.text or item.path), 3)
+            print("Successfully clicked element #" .. index .. ": " .. item.text)
+        else
+            Exec.notify("GUI Click", "Failed to click element #" .. index, 3)
+            print("Failed to click element #" .. index .. ". The element might not be functional.")
+        end
+    end
+    
+    function CustomGui:_copyElementPath(win, index)
+        if not win._lastFound or not win._lastFound[index] then
+            Exec.notify("Copy Path", "No element #" .. index .. " found", 3)
+            print("No element at index " .. index .. ". Search for elements first.")
+            return
+        end
+        
+        local item = win._lastFound[index]
+        local pathToCopy = item.path
+        
+        -- Try to copy to clipboard
+        if Exec.setclipboard then
+            pcall(function()
+                Exec.setclipboard(pathToCopy)
+                Exec.notify("Copy Path", "Copied path #" .. index .. " to clipboard", 3)
+                print("Copied to clipboard: " .. pathToCopy)
+            end)
+        else
+            -- If no clipboard access, just print it clearly
+            Exec.notify("Copy Path", "Path printed to console (no clipboard)", 3)
+            print("=== COPY THIS PATH ===")
+            print(pathToCopy)
+            print("=== END PATH ===")
+        end
+        
+        -- Also print additional info for easy copying
+        print("Element #" .. index .. " details:")
+        print("  Path: " .. pathToCopy)
+        print("  Text: '" .. item.text .. "'")
+        print("  Type: " .. item.type)
+        
+        -- Generate a code snippet for accessing this element
+        local codeSnippet = "game." .. pathToCopy:gsub("^[^%.]+%.", "")
+        print("  Code snippet: " .. codeSnippet)
+        
+        if Exec.setclipboard then
+            print("  (Path copied to clipboard)")
+        else
+            print("  (Select and copy the path above)")
+        end
+    end
+    
+    function CustomGui:_copyAllPaths(win)
+        if not win._lastFound or #win._lastFound == 0 then
+            Exec.notify("Copy Paths", "No search results to copy", 3)
+            print("No search results found. Search for elements first.")
+            return
+        end
+        
+        local allPaths = {}
+        local allInfo = {}
+        
+        for i, item in ipairs(win._lastFound) do
+            table.insert(allPaths, item.path)
+            table.insert(allInfo, string.format("-- Element #%d: '%s' (%s)\n%s", 
+                i, item.text, item.type, item.path))
+        end
+        
+        local pathsText = table.concat(allPaths, "\n")
+        local infoText = table.concat(allInfo, "\n\n")
+        
+        -- Try to copy to clipboard
+        if Exec.setclipboard then
+            pcall(function()
+                Exec.setclipboard(pathsText)
+                Exec.notify("Copy Paths", "Copied " .. #allPaths .. " paths to clipboard", 4)
+                print("Copied " .. #allPaths .. " paths to clipboard")
+            end)
+        else
+            Exec.notify("Copy Paths", "Paths printed to console (no clipboard)", 3)
+        end
+        
+        -- Print detailed info to console
+        print("=== ALL FOUND ELEMENT PATHS ===")
+        print(infoText)
+        print("\n=== PATHS ONLY (for copying) ===")
+        print(pathsText)
+        print("=== END PATHS ===")
+        
+        if Exec.setclipboard then
+            print("(All paths copied to clipboard)")
+        else
+            print("(Select and copy the paths above)")
+        end
+    end
+    
+    function CustomGui:_buildRemoteDetectorTab(win)
+        local tab = win:MakeTab({ Name = "Remote Detector" })
+        
+        -- Store for remote detection
+        win._remoteStore = win._remoteStore or win:CreateStore("remote_detector")
+        win._remoteConnections = win._remoteConnections or {}
+        win._remoteStats = win._remoteStats or {}
+        win._ignoredRemotes = win._ignoredRemotes or {}
+        win._blockedRemotes = win._blockedRemotes or {}
+        win._remoteDetectorActive = win._remoteDetectorActive or false
+        
+        local rStore = win._remoteStore
+        local settings = rStore:Get("settings", {
+            logToConsole = true,
+            showArgs = false,
+            maxDisplayed = 50,
+            autoScroll = true
+        })
+        local function rsave() rStore:Set("settings", settings) end
+        
+        CustomGui:AddLabel(tab, "Remote Event & Function Monitor")
+        
+        -- Main controls
+        CustomGui:AddToggle(tab, { Name = "Enable Remote Detection", Default = false, Callback = function(on)
+            CustomGui:_toggleRemoteDetection(win, on)
+        end })
+        
+        CustomGui:AddToggle(tab, { Name = "Log to Console", Default = settings.logToConsole, Callback = function(on)
+            settings.logToConsole = on; rsave()
+        end })
+        
+        CustomGui:AddToggle(tab, { Name = "Show Arguments", Default = settings.showArgs, Callback = function(on)
+            settings.showArgs = on; rsave()
+        end })
+        
+        -- Display controls
+        CustomGui:AddLabel(tab, "Display Options:")
+        
+        CustomGui:AddSlider(tab, { Name = "Max Displayed Remotes", Min = 10, Max = 200, Default = settings.maxDisplayed or 50, Callback = function(v)
+            settings.maxDisplayed = math.floor(v); rsave()
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Clear Remote List", Callback = function()
+            CustomGui:_clearRemoteList(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Copy Remote List", Callback = function()
+            CustomGui:_copyRemoteList(win)
+        end })
+        
+        -- Stats and management
+        CustomGui:AddLabel(tab, "Remote Management:")
+        
+        CustomGui:AddButton(tab, { Name = "Show Remote Stats", Callback = function()
+            CustomGui:_showRemoteStats(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Block Last Remote", Callback = function()
+            CustomGui:_blockLastRemote(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Ignore Last Remote", Callback = function()
+            CustomGui:_ignoreLastRemote(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Show Ignored/Blocked", Callback = function()
+            CustomGui:_showIgnoredBlocked(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Clear All Blocks/Ignores", Callback = function()
+            win._ignoredRemotes = {}
+            win._blockedRemotes = {}
+            print("Cleared all ignored and blocked remotes")
+            Exec.notify("Remote Detector", "Cleared all blocks and ignores", 3)
+        end })
+        
+        -- Remote Browser section
+        CustomGui:AddLabel(tab, "Remote Browser & Analysis:")
+        
+        CustomGui:AddButton(tab, { Name = "Browse All Remotes", Callback = function()
+            CustomGui:_browseAllRemotes(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Show Remote Details", Callback = function()
+            CustomGui:_showRemoteDetails(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Generate Remote Code", Callback = function()
+            CustomGui:_generateRemoteCode(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Export Remote Data", Callback = function()
+            CustomGui:_exportRemoteData(win)
+        end })
+        
+        return tab
+    end
+    
+    function CustomGui:_toggleRemoteDetection(win, enabled)
+        win._remoteDetectorActive = enabled
+        
+        if enabled then
+            -- Start detecting remotes
+            CustomGui:_startRemoteDetection(win)
+            Exec.notify("Remote Detector", "Started monitoring remotes", 3)
+            print("Remote detection started - monitoring all RemoteEvents and RemoteFunctions")
+        else
+            -- Stop detecting remotes
+            CustomGui:_stopRemoteDetection(win)
+            Exec.notify("Remote Detector", "Stopped monitoring remotes", 3)
+            print("Remote detection stopped")
+        end
+    end
+    
+    function CustomGui:_startRemoteDetection(win)
+        CustomGui:_stopRemoteDetection(win) -- Clean up first
+        
+        win._remoteLog = win._remoteLog or {}
+        win._lastRemote = nil
+        
+        -- Function to hook a remote
+        local function hookRemote(remote, remoteType)
+            if win._ignoredRemotes[remote] then return end
+            
+            -- Hook FireServer for RemoteEvents
+            if remoteType == "RemoteEvent" and hookfunction then
+                pcall(function()
+                    local old = remote.FireServer
+                    remote.FireServer = hookfunction(old, function(...)
+                        CustomGui:_logRemote(win, remote, remoteType, {...})
+                        return old(...)
+                    end)
+                end)
+            elseif remoteType == "RemoteFunction" and hookfunction then
+                pcall(function()
+                    local old = remote.InvokeServer
+                    remote.InvokeServer = hookfunction(old, function(...)
+                        CustomGui:_logRemote(win, remote, remoteType, {...})
+                        return old(...)
+                    end)
+                end)
+            end
+            
+            table.insert(win._remoteConnections, {remote = remote, type = remoteType})
+        end
+        
+        -- Hook existing remotes
+        local function scanForRemotes(parent)
+            for _, obj in ipairs(parent:GetDescendants()) do
+                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                    hookRemote(obj, obj.ClassName)
+                end
+            end
+        end
+        
+        -- Scan ReplicatedStorage and other common locations
+        scanForRemotes(game:GetService("ReplicatedStorage"))
+        pcall(function() scanForRemotes(game:GetService("ReplicatedFirst")) end)
+        pcall(function() scanForRemotes(game:GetService("Lighting")) end)
+        
+        -- Hook new remotes as they're added
+        local function onChildAdded(child)
+            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+                task.wait(0.1) -- Small delay to ensure remote is fully loaded
+                hookRemote(child, child.ClassName)
+            end
+        end
+        
+        local repStorage = game:GetService("ReplicatedStorage")
+        table.insert(win._remoteConnections, repStorage.DescendantAdded:Connect(onChildAdded))
+    end
+    
+    function CustomGui:_stopRemoteDetection(win)
+        -- Disconnect all connections
+        for _, conn in ipairs(win._remoteConnections or {}) do
+            if typeof(conn) == "RBXScriptConnection" then
+                pcall(function() conn:Disconnect() end)
+            end
+        end
+        win._remoteConnections = {}
+    end
+    
+    function CustomGui:_logRemote(win, remote, remoteType, args)
+        if not win._remoteDetectorActive then return end
+        if win._ignoredRemotes[remote] then return end
+        
+        -- Check if remote is blocked
+        if win._blockedRemotes[remote] then
+            print("🚫 BLOCKED: " .. remote:GetFullName())
+            return -- Don't execute the remote
+        end
+        
+        win._lastRemote = remote
+        
+        -- Update stats
+        local name = remote:GetFullName()
+        win._remoteStats[name] = (win._remoteStats[name] or 0) + 1
+        
+        -- Create log entry
+        local logEntry = {
+            name = name,
+            type = remoteType,
+            time = os.date("%H:%M:%S"),
+            args = args,
+            count = win._remoteStats[name]
+        }
+        
+        -- Add to log
+        win._remoteLog = win._remoteLog or {}
+        table.insert(win._remoteLog, logEntry)
+        
+        -- Keep only recent entries
+        local maxEntries = (win._remoteStore and win._remoteStore:Get("settings", {}).maxDisplayed) or 50
+        while #win._remoteLog > maxEntries do
+            table.remove(win._remoteLog, 1)
+        end
+        
+        -- Log to console if enabled
+        local settings = (win._remoteStore and win._remoteStore:Get("settings", {})) or {}
+        if settings.logToConsole ~= false then
+            local logText = string.format("📡 [%s] %s (%s) - Count: %d", 
+                logEntry.time, logEntry.name, logEntry.type, logEntry.count)
+            
+            if settings.showArgs and args and #args > 0 then
+                local argStrings = {}
+                for i, arg in ipairs(args) do
+                    if i > 5 then -- Limit arg display
+                        table.insert(argStrings, "...")
+                        break
+                    end
+                    table.insert(argStrings, tostring(arg))
+                end
+                logText = logText .. " | Args: " .. table.concat(argStrings, ", ")
+            end
+            
+            print(logText)
+        end
+    end
+    
+    function CustomGui:_clearRemoteList(win)
+        win._remoteLog = {}
+        win._remoteStats = {}
+        print("Remote list cleared")
+        Exec.notify("Remote Detector", "Remote list cleared", 2)
+    end
+    
+    function CustomGui:_copyRemoteList(win)
+        if not win._remoteLog or #win._remoteLog == 0 then
+            Exec.notify("Remote Detector", "No remotes to copy", 3)
+            return
+        end
+        
+        local lines = {"=== REMOTE DETECTOR LOG ===", ""}
+        for _, entry in ipairs(win._remoteLog) do
+            local line = string.format("[%s] %s (%s) - Count: %d", 
+                entry.time, entry.name, entry.type, entry.count)
+            table.insert(lines, line)
+        end
+        table.insert(lines, "")
+        table.insert(lines, "=== END LOG ===")
+        
+        local logText = table.concat(lines, "\n")
+        
+        if Exec.setclipboard then
+            pcall(function()
+                Exec.setclipboard(logText)
+                Exec.notify("Remote Detector", "Log copied to clipboard", 3)
+            end)
+        else
+            Exec.notify("Remote Detector", "Log printed to console", 3)
+        end
+        
+        print(logText)
+    end
+    
+    function CustomGui:_showRemoteStats(win)
+        if not win._remoteStats or next(win._remoteStats) == nil then
+            print("No remote statistics available")
+            Exec.notify("Remote Detector", "No stats available", 3)
+            return
+        end
+        
+        print("=== REMOTE STATISTICS ===")
+        
+        -- Sort by call count
+        local sorted = {}
+        for name, count in pairs(win._remoteStats) do
+            table.insert(sorted, {name = name, count = count})
+        end
+        table.sort(sorted, function(a, b) return a.count > b.count end)
+        
+        print("Top remotes by call count:")
+        for i, entry in ipairs(sorted) do
+            if i > 20 then break end -- Show top 20
+            print(string.format("%d. %s - %d calls", i, entry.name, entry.count))
+        end
+        
+        print("\nTotal unique remotes tracked: " .. #sorted)
+        print("=== END STATISTICS ===")
+        
+        Exec.notify("Remote Detector", "Stats shown in console", 3)
+    end
+    
+    function CustomGui:_blockLastRemote(win)
+        if not win._lastRemote then
+            Exec.notify("Remote Detector", "No recent remote to block", 3)
+            return
+        end
+        
+        local remote = win._lastRemote
+        win._blockedRemotes[remote] = true
+        
+        local name = remote:GetFullName()
+        print("🚫 BLOCKED REMOTE: " .. name)
+        Exec.notify("Remote Detector", "Blocked: " .. remote.Name, 3)
+    end
+    
+    function CustomGui:_ignoreLastRemote(win)
+        if not win._lastRemote then
+            Exec.notify("Remote Detector", "No recent remote to ignore", 3)
+            return
+        end
+        
+        local remote = win._lastRemote
+        win._ignoredRemotes[remote] = true
+        
+        local name = remote:GetFullName()
+        print("🔇 IGNORED REMOTE: " .. name)
+        Exec.notify("Remote Detector", "Ignored: " .. remote.Name, 3)
+    end
+    
+    function CustomGui:_showIgnoredBlocked(win)
+        print("=== IGNORED & BLOCKED REMOTES ===")
+        
+        print("\n🔇 IGNORED REMOTES:")
+        local ignoredCount = 0
+        for remote, _ in pairs(win._ignoredRemotes or {}) do
+            if remote and remote.Parent then
+                print("  " .. remote:GetFullName())
+                ignoredCount = ignoredCount + 1
+            end
+        end
+        if ignoredCount == 0 then print("  None") end
+        
+        print("\n🚫 BLOCKED REMOTES:")
+        local blockedCount = 0
+        for remote, _ in pairs(win._blockedRemotes or {}) do
+            if remote and remote.Parent then
+                print("  " .. remote:GetFullName())
+                blockedCount = blockedCount + 1
+            end
+        end
+        if blockedCount == 0 then print("  None") end
+        
+        print("\n=== END LIST ===")
+        Exec.notify("Remote Detector", string.format("%d ignored, %d blocked", ignoredCount, blockedCount), 3)
+    end
+    
+    function CustomGui:_browseAllRemotes(win)
+        print("=== REMOTE BROWSER ===")
+        print("Scanning game for all RemoteEvents and RemoteFunctions...")
+        
+        local foundRemotes = {}
+        
+        -- Scan function
+        local function scanLocation(parent, locationName)
+            local remotes = {}
+            pcall(function()
+                for _, obj in ipairs(parent:GetDescendants()) do
+                    if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                        table.insert(remotes, {
+                            name = obj.Name,
+                            path = obj:GetFullName(),
+                            type = obj.ClassName,
+                            parent = obj.Parent and obj.Parent.Name or "Unknown",
+                            location = locationName
+                        })
+                    end
+                end
+            end)
+            return remotes
+        end
+        
+        -- Scan different locations
+        local locations = {
+            {game:GetService("ReplicatedStorage"), "ReplicatedStorage"},
+            {game:GetService("ReplicatedFirst"), "ReplicatedFirst"},
+            {game:GetService("Lighting"), "Lighting"},
+            {game:GetService("Workspace"), "Workspace"},
+        }
+        
+        -- Try ServerStorage if accessible
+        pcall(function()
+            table.insert(locations, {game:GetService("ServerStorage"), "ServerStorage"})
+        end)
+        
+        for _, loc in ipairs(locations) do
+            local remotes = scanLocation(loc[1], loc[2])
+            for _, remote in ipairs(remotes) do
+                table.insert(foundRemotes, remote)
+            end
+        end
+        
+        -- Store results for later use
+        win._allRemotes = foundRemotes
+        
+        print(string.format("\nFound %d remotes across %d locations:", #foundRemotes, #locations))
+        print("\n📋 REMOTE INVENTORY:")
+        
+        -- Group by location
+        local byLocation = {}
+        for _, remote in ipairs(foundRemotes) do
+            byLocation[remote.location] = byLocation[remote.location] or {}
+            table.insert(byLocation[remote.location], remote)
+        end
+        
+        for location, remotes in pairs(byLocation) do
+            print(string.format("\n📁 %s (%d remotes):", location, #remotes))
+            for i, remote in ipairs(remotes) do
+                local icon = remote.type == "RemoteEvent" and "📡" or "🔧"
+                print(string.format("  %s %d. %s (%s)", icon, i, remote.name, remote.type))
+                print(string.format("     Path: %s", remote.path))
+            end
+        end
+        
+        print("\n=== END BROWSER ===")
+        print("Use 'Show Remote Details' to analyze specific remotes")
+        
+        Exec.notify("Remote Browser", string.format("Found %d remotes", #foundRemotes), 4)
+    end
+    
+    function CustomGui:_showRemoteDetails(win)
+        if not win._allRemotes or #win._allRemotes == 0 then
+            print("No remotes found. Run 'Browse All Remotes' first.")
+            Exec.notify("Remote Details", "Browse remotes first", 3)
+            return
+        end
+        
+        print("=== REMOTE DETAILS & ANALYSIS ===")
+        
+        -- Show recent activity if available
+        if win._remoteLog and #win._remoteLog > 0 then
+            print("\n🔥 RECENT ACTIVITY (Last 10 calls):")
+            local recent = {}
+            for i = math.max(1, #win._remoteLog - 9), #win._remoteLog do
+                table.insert(recent, win._remoteLog[i])
+            end
+            
+            for i, entry in ipairs(recent) do
+                local argText = ""
+                if entry.args and #entry.args > 0 then
+                    local args = {}
+                    for j, arg in ipairs(entry.args) do
+                        if j > 3 then table.insert(args, "..."); break end
+                        local argStr = tostring(arg)
+                        if #argStr > 20 then argStr = argStr:sub(1, 20) .. "..." end
+                        table.insert(args, argStr)
+                    end
+                    argText = " | Args: " .. table.concat(args, ", ")
+                end
+                print(string.format("  [%s] %s (%s)%s", entry.time, entry.name, entry.type, argText))
+            end
+        end
+        
+        -- Show statistics if available
+        if win._remoteStats and next(win._remoteStats) then
+            print("\n📊 CALL STATISTICS:")
+            local sorted = {}
+            for name, count in pairs(win._remoteStats) do
+                table.insert(sorted, {name = name, count = count})
+            end
+            table.sort(sorted, function(a, b) return a.count > b.count end)
+            
+            for i = 1, math.min(10, #sorted) do
+                local entry = sorted[i]
+                print(string.format("  %d. %s - %d calls", i, entry.name:match("[^%.]+$") or entry.name, entry.count))
+            end
+        end
+        
+        -- Remote analysis
+        print("\n🔍 REMOTE ANALYSIS:")
+        local eventCount = 0
+        local functionCount = 0
+        local byParent = {}
+        
+        for _, remote in ipairs(win._allRemotes) do
+            if remote.type == "RemoteEvent" then
+                eventCount = eventCount + 1
+            else
+                functionCount = functionCount + 1
+            end
+            
+            byParent[remote.parent] = (byParent[remote.parent] or 0) + 1
+        end
+        
+        print(string.format("  📡 RemoteEvents: %d", eventCount))
+        print(string.format("  🔧 RemoteFunctions: %d", functionCount))
+        print(string.format("  📁 Total Parents: %d", table.maxn and table.maxn(byParent) or 0))
+        
+        print("\n🏗️ PARENT DISTRIBUTION:")
+        local parentList = {}
+        for parent, count in pairs(byParent) do
+            table.insert(parentList, {parent = parent, count = count})
+        end
+        table.sort(parentList, function(a, b) return a.count > b.count end)
+        
+        for i = 1, math.min(5, #parentList) do
+            print(string.format("  %s: %d remotes", parentList[i].parent, parentList[i].count))
+        end
+        
+        print("\n=== END DETAILS ===")
+        Exec.notify("Remote Details", "Analysis complete", 3)
+    end
+    
+    function CustomGui:_generateRemoteCode(win)
+        if not win._allRemotes or #win._allRemotes == 0 then
+            print("No remotes found. Run 'Browse All Remotes' first.")
+            Exec.notify("Remote Code", "Browse remotes first", 3)
+            return
+        end
+        
+        print("=== REMOTE CODE GENERATOR ===")
+        
+        local codeLines = {
+            "-- Generated Remote Code",
+            "-- Copy and paste the sections you need",
+            "",
+            "-- Services",
+            "local ReplicatedStorage = game:GetService('ReplicatedStorage')",
+            "local Players = game:GetService('Players')",
+            "local LocalPlayer = Players.LocalPlayer",
+            "",
+            "-- Remote References"
+        }
+        
+        -- Generate reference variables
+        for _, remote in ipairs(win._allRemotes) do
+            local varName = remote.name:gsub("[^%w]", ""):gsub("^%l", string.upper) .. remote.type:gsub("Remote", "")
+            local line = string.format("local %s = %s", varName, remote.path)
+            table.insert(codeLines, line)
+        end
+        
+        table.insert(codeLines, "")
+        table.insert(codeLines, "-- Usage Examples")
+        
+        -- Generate usage examples
+        for _, remote in ipairs(win._allRemotes) do
+            local varName = remote.name:gsub("[^%w]", ""):gsub("^%l", string.upper) .. remote.type:gsub("Remote", "")
+            
+            if remote.type == "RemoteEvent" then
+                table.insert(codeLines, string.format("-- %s:FireServer(arg1, arg2, ...)", varName))
+            else
+                table.insert(codeLines, string.format("-- local result = %s:InvokeServer(arg1, arg2, ...)", varName))
+            end
+        end
+        
+        -- Add common patterns based on call logs
+        if win._remoteLog and #win._remoteLog > 0 then
+            table.insert(codeLines, "")
+            table.insert(codeLines, "-- Common Call Patterns (from logs)")
+            
+            local patterns = {}
+            for _, entry in ipairs(win._remoteLog) do
+                local pattern = entry.name:match("[^%.]+$") or entry.name
+                if not patterns[pattern] then
+                    patterns[pattern] = {
+                        name = pattern,
+                        path = entry.name,
+                        type = entry.type,
+                        args = entry.args
+                    }
+                end
+            end
+            
+            for _, pattern in pairs(patterns) do
+                if pattern.args and #pattern.args > 0 then
+                    local argExample = {}
+                    for i, arg in ipairs(pattern.args) do
+                        if i > 3 then break end
+                        table.insert(argExample, string.format("'%s'", tostring(arg)))
+                    end
+                    local method = pattern.type == "RemoteEvent" and "FireServer" or "InvokeServer"
+                    table.insert(codeLines, string.format("-- %s:%s(%s)", pattern.path, method, table.concat(argExample, ", ")))
+                end
+            end
+        end
+        
+        local fullCode = table.concat(codeLines, "\n")
+        
+        -- Copy to clipboard if available
+        if Exec.setclipboard then
+            pcall(function()
+                Exec.setclipboard(fullCode)
+                Exec.notify("Remote Code", "Code copied to clipboard", 4)
+                print("✅ Remote code copied to clipboard!")
+            end)
+        else
+            Exec.notify("Remote Code", "Code printed to console", 3)
+        end
+        
+        print("=== GENERATED CODE ===")
+        print(fullCode)
+        print("=== END CODE ===")
+        
+        if not Exec.setclipboard then
+            print("Select and copy the code above to use it.")
+        end
+    end
+    
+    function CustomGui:_exportRemoteData(win)
+        local exportData = {
+            timestamp = os.date("%Y-%m-%d %H:%M:%S"),
+            gameInfo = {
+                placeId = game.PlaceId,
+                jobId = game.JobId,
+                placeName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name or "Unknown"
+            },
+            remotes = win._allRemotes or {},
+            callLogs = win._remoteLog or {},
+            statistics = win._remoteStats or {},
+            ignoredRemotes = {},
+            blockedRemotes = {}
+        }
+        
+        -- Convert ignored/blocked to exportable format
+        for remote, _ in pairs(win._ignoredRemotes or {}) do
+            if remote and remote.Parent then
+                table.insert(exportData.ignoredRemotes, remote:GetFullName())
+            end
+        end
+        
+        for remote, _ in pairs(win._blockedRemotes or {}) do
+            if remote and remote.Parent then
+                table.insert(exportData.blockedRemotes, remote:GetFullName())
+            end
+        end
+        
+        -- Generate detailed report
+        local report = {
+            "=== REMOTE SPY EXPORT REPORT ===",
+            "Generated: " .. exportData.timestamp,
+            "",
+            "📍 GAME INFO:",
+            "  Place ID: " .. exportData.gameInfo.placeId,
+            "  Job ID: " .. exportData.gameInfo.jobId,
+            "  Place Name: " .. exportData.gameInfo.placeName,
+            "",
+            "📋 REMOTE INVENTORY:",
+            "  Total Remotes: " .. #exportData.remotes,
+            "  RemoteEvents: " .. table.concat({}, ""),  -- Will calculate below
+            "  RemoteFunctions: " .. table.concat({}, ""), -- Will calculate below
+            "",
+            "📊 ACTIVITY STATISTICS:",
+            "  Total Calls Logged: " .. #exportData.callLogs,
+            "  Unique Remotes Called: " .. table.concat({}, ""), -- Will calculate below
+            "",
+            "🔇 FILTERING:",
+            "  Ignored Remotes: " .. #exportData.ignoredRemotes,
+            "  Blocked Remotes: " .. #exportData.blockedRemotes,
+            "",
+            "=== DETAILED DATA ==="
+        }
+        
+        -- Calculate counts
+        local eventCount, functionCount = 0, 0
+        for _, remote in ipairs(exportData.remotes) do
+            if remote.type == "RemoteEvent" then eventCount = eventCount + 1
+            else functionCount = functionCount + 1 end
+        end
+        
+        report[9] = "  RemoteEvents: " .. eventCount
+        report[10] = "  RemoteFunctions: " .. functionCount
+        report[14] = "  Unique Remotes Called: " .. table.concat({}, tostring(next(exportData.statistics) and 0 or 0))
+        
+        -- Add remote list
+        table.insert(report, "\n📡 ALL REMOTES:")
+        for i, remote in ipairs(exportData.remotes) do
+            table.insert(report, string.format("%d. %s (%s) - %s", i, remote.name, remote.type, remote.path))
+        end
+        
+        -- Add call statistics
+        if next(exportData.statistics) then
+            table.insert(report, "\n📈 CALL STATISTICS:")
+            local sortedStats = {}
+            for name, count in pairs(exportData.statistics) do
+                table.insert(sortedStats, {name = name, count = count})
+            end
+            table.sort(sortedStats, function(a, b) return a.count > b.count end)
+            
+            for i, stat in ipairs(sortedStats) do
+                table.insert(report, string.format("%d. %s - %d calls", i, stat.name, stat.count))
+            end
+        end
+        
+        -- Add recent logs
+        if #exportData.callLogs > 0 then
+            table.insert(report, "\n📝 RECENT CALL LOG:")
+            for i, log in ipairs(exportData.callLogs) do
+                local argText = ""
+                if log.args and #log.args > 0 then
+                    argText = " | Args: " .. table.concat(log.args, ", ", 1, math.min(3, #log.args))
+                end
+                table.insert(report, string.format("[%s] %s (%s)%s", log.time, log.name, log.type, argText))
+            end
+        end
+        
+        table.insert(report, "\n=== END EXPORT ===")
+        
+        local fullReport = table.concat(report, "\n")
+        
+        -- Copy to clipboard
+        if Exec.setclipboard then
+            pcall(function()
+                Exec.setclipboard(fullReport)
+                Exec.notify("Remote Export", "Report copied to clipboard", 4)
+                print("✅ Remote data exported to clipboard!")
+            end)
+        else
+            Exec.notify("Remote Export", "Report printed to console", 3)
+        end
+        
+        print(fullReport)
+        
+        -- Also try to save to file if possible
+        if Exec.writefile then
+            pcall(function()
+                local filename = string.format("RemoteSpy_%s_%d.txt", os.date("%Y%m%d_%H%M%S"), game.PlaceId)
+                Exec.writefile(filename, fullReport)
+                print("💾 Also saved to file: " .. filename)
+            end)
+        end
+    end
 
     function CustomGui:_toggleESP(win)
         local any = (win._esp and (win._esp.names or win._esp.highlight or win._esp.tracers)) and true or false
@@ -1731,6 +2712,63 @@ do
         end
     end
 
+    function CustomGui:_buildGUIFinderTab(win)
+        local tab = win:MakeTab({ Name = "GUI Finder" })
+        
+        -- Store for search history and found elements
+        win._guiFinderStore = win._guiFinderStore or win:CreateStore("gui_finder")
+        win._lastFound = win._lastFound or {}
+        
+        CustomGui:AddLabel(tab, "Search for GUI elements in the game")
+        
+        -- Search input (using a button that prompts for input)
+        CustomGui:AddButton(tab, { Name = "Enter Search Term", Callback = function()
+            -- Create a simple input GUI
+            CustomGui:_createSearchInput(win)
+        end })
+        
+        -- Quick search buttons for common terms
+        CustomGui:AddLabel(tab, "Quick Searches:")
+        
+        local commonSearches = {"Auto", "Wave", "Shop", "Settings", "Menu", "Button", "Toggle", "Upgrade"}
+        for _, term in ipairs(commonSearches) do
+            CustomGui:AddButton(tab, { Name = "Find: " .. term, Callback = function()
+                win._lastFound = CustomGui:_findGUIElement(term)
+                CustomGui:_displayFoundElements(win, win._lastFound)
+            end })
+        end
+        
+        -- Action buttons
+        CustomGui:AddLabel(tab, "Actions on Found Elements:")
+        
+        for i = 1, 5 do
+            CustomGui:AddButton(tab, { Name = "Click Result #" .. i, Callback = function()
+                CustomGui:_clickFoundElement(win, i)
+            end })
+        end
+        
+        CustomGui:AddLabel(tab, "Copy Paths:")
+        
+        for i = 1, 5 do
+            CustomGui:AddButton(tab, { Name = "Copy Path #" .. i, Callback = function()
+                CustomGui:_copyElementPath(win, i)
+            end })
+        end
+        
+        CustomGui:AddButton(tab, { Name = "Copy All Paths", Callback = function()
+            CustomGui:_copyAllPaths(win)
+        end })
+        
+        -- Clear results
+        CustomGui:AddButton(tab, { Name = "Clear Results", Callback = function()
+            win._lastFound = {}
+            print("Cleared search results")
+            Exec.notify("GUI Finder", "Results cleared", 2)
+        end })
+        
+        return tab
+    end
+
     function CustomGui:_buildUtilitiesTab(win)
         local tab = win:MakeTab({ Name = "Utilities" })
         -- Persistent Utilities store
@@ -1798,8 +2836,8 @@ do
         end })
         
         -- GUI Finder utility
-        CustomGui:AddButton(tab, { Name = "Find GUI Element", Callback = function()
-            CustomGui:_findGUIElement()
+        CustomGui:AddButton(tab, { Name = "Find Auto Wave", Callback = function()
+            CustomGui:_findGUIElement("Auto Wave")
         end })
 
         -- Theme as dropdown
@@ -1823,6 +2861,14 @@ do
     -- Public window APIs
     function CustomGui:BuildUtilitiesTab(win)
         return CustomGui:_buildUtilitiesTab(win)
+    end
+    
+    function CustomGui:BuildGUIFinderTab(win)
+        return CustomGui:_buildGUIFinderTab(win)
+    end
+    
+    function CustomGui:BuildRemoteDetectorTab(win)
+        return CustomGui:_buildRemoteDetectorTab(win)
     end
 
     function CustomGui:SetTheme(win, name)
