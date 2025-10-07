@@ -3244,5 +3244,6 @@ do
         end
     end
 end
+end
 
 return CustomGui
