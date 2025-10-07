@@ -261,16 +261,10 @@ function CustomGui:CreateWindow(props)
     reopenCorner.CornerRadius = UDim.new(0, 14)
     reopenCorner.Parent = reopenBtn
 
-    -- Ensure the reopen icon is visible within the screen when shown
+    -- Don't clamp reopen icon - allow it to be positioned anywhere
     local function ensureReopenVisible()
-        local scr = screenGui.AbsoluteSize
-        local btn = reopenBtn.AbsoluteSize
-        local pos = reopenBtn.AbsolutePosition
-        local nx = math.clamp(pos.X, 0, math.max(0, scr.X - btn.X))
-        local ny = math.clamp(pos.Y, 0, math.max(0, scr.Y - btn.Y))
-        if nx ~= pos.X or ny ~= pos.Y then
-            reopenBtn.Position = UDim2.new(0, nx, 0, ny)
-        end
+        -- No clamping - user can place icon anywhere they want
+        return
     end
 
     -- Optional keybind to show/hide (RightShift default)
@@ -523,89 +517,110 @@ function CustomGui:CreateWindow(props)
         task.defer(applySavedReopenPos)
         screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applySavedReopenPos)
 
-        local rDragging, rDragInput, rDragStart, rStartPos
-        local movedMag = 0
+        -- Simple reopen icon drag system (same as main window)
+        local rDragging, rPending, rDragInput, rDragStart, rStartPos
+        local rMovedMag = 0
+        local REOPEN_DRAG_SLOP = 8 -- pixels of movement before we consider it a drag
+        
         local function saveReopenPos()
             if not windowObj._uiStore then return end
             local pos = reopenBtn.AbsolutePosition
             -- Save raw pixel offsets for exact placement (no clamping)
             windowObj._uiStore:Set("reopenPos", { ox = pos.X, oy = pos.Y })
         end
-        local rPending = false
-        local rHoldTime = 0
-        local rHoldStart = 0
-        local rHoldConnection = nil
         
-        reopenBtn.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                rDragging = false
-                rPending = true
-                rDragStart = input.Position
-                rStartPos = reopenBtn.AbsolutePosition
-                movedMag = 0
-                rHoldTime = 0
-                rHoldStart = tick()
-                
-                -- Start a hold timer for emulator compatibility
-                if rHoldConnection then rHoldConnection:Disconnect() end
-                rHoldConnection = RunService.Heartbeat:Connect(function()
-                    rHoldTime = tick() - rHoldStart
-                end)
+        local function beginReopenDrag(input)
+            rDragging = true
+            rPending = false
+            rDragStart = input.Position
+            rStartPos = reopenBtn.AbsolutePosition
+            rMovedMag = 0
+            if input.UserInputType == Enum.UserInputType.Touch then
+                rDragInput = input
+            else
+                rDragInput = nil
             end
-        end)
-
-        UIS.InputChanged:Connect(function(input)
-            if not (rDragging or rPending) then return end
-            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                -- Use the event's position to avoid GUI inset offsets - works anywhere on screen
-                local delta = Vector2.new(input.Position.X - rDragStart.X, input.Position.Y - rDragStart.Y)
-                movedMag = math.max(movedMag, delta.Magnitude)
-                
-                -- Start dragging if we've moved enough OR held for long enough (emulator-friendly)
-                if rPending and (movedMag > 35 or rHoldTime > 0.5) then
-                    rDragging = true
-                    rPending = false
-                    if rHoldConnection then rHoldConnection:Disconnect(); rHoldConnection = nil end
+        end
+        
+        local function endReopenDrag()
+            if rDragging or rPending then
+                local wasDragging = rDragging
+                rDragging = false
+                rPending = false
+                if wasDragging then
+                    saveReopenPos()
+                else
+                    -- Was just a click - open the main window
+                    mainFrame.Visible = true
+                    reopenBtn.Visible = false
+                    dragShield.Visible = false
                 end
-                
-                -- Only move if actively dragging
-                if rDragging then
+            end
+        end
+        
+        local function updateReopenDrag(input)
+            if not rDragging then
+                if not rPending then return end
+                local delta = Vector2.new(input.Position.X - rDragStart.X, input.Position.Y - rDragStart.Y)
+                rMovedMag = math.max(rMovedMag, delta.Magnitude)
+                if rMovedMag >= REOPEN_DRAG_SLOP then
+                    beginReopenDrag(input)
+                else
+                    return
+                end
+            end
+            
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = Vector2.new(input.Position.X - rDragStart.X, input.Position.Y - rDragStart.Y)
+                rMovedMag = math.max(rMovedMag, delta.Magnitude)
+                local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
+                reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
+            elseif input.UserInputType == Enum.UserInputType.Touch then
+                if (rDragInput == nil) or (input == rDragInput) then
+                    local delta = input.Position - rDragStart
+                    rMovedMag = math.max(rMovedMag, delta.Magnitude)
                     local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
                     reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
                 end
             end
+        end
+        
+        reopenBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                rPending = true
+                rDragging = false
+                rDragStart = input.Position
+                rStartPos = reopenBtn.AbsolutePosition
+                rMovedMag = 0
+                if input.UserInputType == Enum.UserInputType.Touch then 
+                    rDragInput = input 
+                else 
+                    rDragInput = nil 
+                end
+            end
         end)
         
-        local function finishIconDragOrClick()
-            if not (rDragging or rPending) then return end
-            local wasDragging = rDragging
-            local wasHeld = rHoldTime > 0.5
-            
-            -- Clean up hold timer
-            if rHoldConnection then rHoldConnection:Disconnect(); rHoldConnection = nil end
-            
-            rDragging = false
-            rPending = false
-            
-            if wasDragging and (movedMag > 45 or wasHeld) then
-                -- Save position without clamping - allow anywhere
-                saveReopenPos()
-                -- Make absolutely sure it's visible
-                reopenBtn.Visible = true
-            else
-                mainFrame.Visible = true
-                reopenBtn.Visible = false
-                dragShield.Visible = false
-            end
-        end
-        reopenBtn.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                finishIconDragOrClick()
+        reopenBtn.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                updateReopenDrag(input)
             end
         end)
+        
+        UIS.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                updateReopenDrag(input)
+            end
+        end)
+        
+        reopenBtn.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                endReopenDrag()
+            end
+        end)
+        
         UIS.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                finishIconDragOrClick()
+                endReopenDrag()
             end
         end)
     end
