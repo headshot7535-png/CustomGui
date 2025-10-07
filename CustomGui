@@ -261,10 +261,36 @@ function CustomGui:CreateWindow(props)
     reopenCorner.CornerRadius = UDim.new(0, 14)
     reopenCorner.Parent = reopenBtn
 
-    -- Don't clamp reopen icon - allow it to be positioned anywhere
+    -- Ensure the reopen icon is at least partially visible when shown
     local function ensureReopenVisible()
-        -- No clamping - user can place icon anywhere they want
-        return
+        local scr = screenGui.AbsoluteSize
+        local btn = reopenBtn.AbsoluteSize
+        local pos = reopenBtn.AbsolutePosition
+        
+        -- Only clamp if completely off-screen, allow partial off-screen positioning
+        local nx = pos.X
+        local ny = pos.Y
+        
+        -- If completely off the right, bring it back partially
+        if pos.X >= scr.X then
+            nx = scr.X - math.min(btn.X, 44) -- Show at least 44px or full button width
+        end
+        -- If completely off the left, bring it back partially  
+        if pos.X + btn.X <= 0 then
+            nx = -btn.X + math.min(btn.X, 44)
+        end
+        -- If completely off the bottom, bring it back partially
+        if pos.Y >= scr.Y then
+            ny = scr.Y - math.min(btn.Y, 44)
+        end
+        -- If completely off the top, bring it back partially
+        if pos.Y + btn.Y <= 0 then
+            ny = -btn.Y + math.min(btn.Y, 44)
+        end
+        
+        if nx ~= pos.X or ny ~= pos.Y then
+            reopenBtn.Position = UDim2.new(0, nx, 0, ny)
+        end
     end
 
     -- Optional keybind to show/hide (RightShift default)
@@ -314,9 +340,21 @@ function CustomGui:CreateWindow(props)
     function windowObj:Hide()
         if self.mainFrame then self.mainFrame.Visible = false end
         if self.ScreenGui then self.ScreenGui.Enabled = true end
-        if self.reopenBtn then self.reopenBtn.Visible = true end
         dragShield.Visible = false
-        ensureReopenVisible()
+        
+        -- Force the reopen button to be visible and ensure it's on screen
+        if self.reopenBtn then 
+            self.reopenBtn.Visible = true
+            ensureReopenVisible()
+            -- Double-check visibility
+            task.defer(function()
+                if self.reopenBtn then
+                    self.reopenBtn.Visible = true
+                    print("Hide - Reopen icon position:", self.reopenBtn.AbsolutePosition)
+                end
+            end)
+        end
+        
         if self._closeCb then pcall(self._closeCb) end
     end
 
@@ -639,9 +677,17 @@ function CustomGui:CreateWindow(props)
     end)
     minimizeBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
-        reopenBtn.Visible = true
         dragShield.Visible = false
+        
+        -- Force the reopen button to be visible and ensure it's on screen
+        reopenBtn.Visible = true
         ensureReopenVisible()
+        
+        -- Double-check visibility after a short delay (for any rendering issues)
+        task.wait(0.1)
+        reopenBtn.Visible = true
+        
+        print("Minimized - Reopen icon position:", reopenBtn.AbsolutePosition)
     end)
     -- MouseButton1Click is handled in InputEnded above to avoid triggering when dragging
 
