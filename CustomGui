@@ -267,28 +267,32 @@ function CustomGui:CreateWindow(props)
         local btn = reopenBtn.AbsoluteSize
         local pos = reopenBtn.AbsolutePosition
         
-        -- Only clamp if completely off-screen, allow partial off-screen positioning
+        print("ensureReopenVisible - Screen:", scr.X, scr.Y, "Button:", btn.X, btn.Y, "Position:", pos.X, pos.Y)
+        
+        -- Force to safe bounds if off-screen
         local nx = pos.X
         local ny = pos.Y
+        local changed = false
         
-        -- If completely off the right, bring it back partially
-        if pos.X >= scr.X then
-            nx = scr.X - math.min(btn.X, 44) -- Show at least 44px or full button width
-        end
-        -- If completely off the left, bring it back partially  
-        if pos.X + btn.X <= 0 then
-            nx = -btn.X + math.min(btn.X, 44)
-        end
-        -- If completely off the bottom, bring it back partially
-        if pos.Y >= scr.Y then
-            ny = scr.Y - math.min(btn.Y, 44)
-        end
-        -- If completely off the top, bring it back partially
-        if pos.Y + btn.Y <= 0 then
-            ny = -btn.Y + math.min(btn.Y, 44)
+        -- Keep icon fully on screen with some margin
+        if pos.X < 0 then
+            nx = 10
+            changed = true
+        elseif pos.X + btn.X > scr.X then
+            nx = scr.X - btn.X - 10
+            changed = true
         end
         
-        if nx ~= pos.X or ny ~= pos.Y then
+        if pos.Y < 0 then
+            ny = 10
+            changed = true
+        elseif pos.Y + btn.Y > scr.Y then
+            ny = scr.Y - btn.Y - 10
+            changed = true
+        end
+        
+        if changed then
+            print("Correcting position from", pos.X, pos.Y, "to", nx, ny)
             reopenBtn.Position = UDim2.new(0, nx, 0, ny)
         end
     end
@@ -551,16 +555,28 @@ function CustomGui:CreateWindow(props)
             
             if type(saved) == "table" then
                 if typeof(saved.ox) == "number" and typeof(saved.oy) == "number" then
-                    reopenBtn.Position = UDim2.new(0, saved.ox, 0, saved.oy)
-                    positioned = true
+                    -- Validate saved position is reasonable
+                    local scr = screenGui.AbsoluteSize
+                    if saved.ox >= -50 and saved.ox < scr.X + 50 and saved.oy >= -50 and saved.oy < scr.Y + 50 then
+                        reopenBtn.Position = UDim2.new(0, saved.ox, 0, saved.oy)
+                        positioned = true
+                        print("Loaded saved position:", saved.ox, saved.oy)
+                    else
+                        print("Saved position invalid:", saved.ox, saved.oy, "Screen size:", scr.X, scr.Y)
+                    end
                 elseif typeof(saved.sx) == "number" and typeof(saved.sy) == "number" then
                     -- Backward compatible with older normalized positions
                     local scr = screenGui.AbsoluteSize
                     local btn = reopenBtn.AbsoluteSize
                     local x = saved.sx * math.max(0, scr.X - btn.X)
                     local y = saved.sy * math.max(0, scr.Y - btn.Y)
-                    reopenBtn.Position = UDim2.new(0, math.floor(x + 0.5), 0, math.floor(y + 0.5))
-                    positioned = true
+                    if x >= 0 and x < scr.X and y >= 0 and y < scr.Y then
+                        reopenBtn.Position = UDim2.new(0, math.floor(x + 0.5), 0, math.floor(y + 0.5))
+                        positioned = true
+                        print("Loaded normalized position:", x, y)
+                    else
+                        print("Normalized position invalid:", x, y)
+                    end
                 end
             end
             
@@ -596,7 +612,10 @@ function CustomGui:CreateWindow(props)
         local REOPEN_DRAG_SLOP = 8 -- pixels of movement before we consider it a drag
         
         local function saveReopenPos()
-            if not windowObj._uiStore then return end
+            -- Make sure store exists before using it
+            if not windowObj._uiStore then 
+                windowObj._uiStore = windowObj:CreateStore("ui")
+            end
             
             -- Ensure icon is at least partially visible before saving
             ensureReopenVisible()
@@ -605,7 +624,9 @@ function CustomGui:CreateWindow(props)
             print("Saving reopen position:", pos.X, pos.Y)
             
             -- Save the corrected position
-            windowObj._uiStore:Set("reopenPos", { ox = pos.X, oy = pos.Y })
+            if windowObj._uiStore then
+                windowObj._uiStore:Set("reopenPos", { ox = pos.X, oy = pos.Y })
+            end
         end
         
         local function beginReopenDrag(input)
@@ -742,20 +763,30 @@ function CustomGui:CreateWindow(props)
         -- Force the reopen button to be visible and ensure it's on screen
         reopenBtn.Visible = true
         
-        -- Check if icon is saved off-screen and reset if needed
-        local pos = reopenBtn.AbsolutePosition
-        local scr = screenGui.AbsoluteSize
-        local btn = reopenBtn.AbsoluteSize
+        -- Force icon to a safe visible position
+        reopenBtn.Position = UDim2.new(0, 14, 0, 14)
         
-        if pos.X + btn.X <= 0 or pos.Y + btn.Y <= 0 or pos.X >= scr.X or pos.Y >= scr.Y then
-            print("Icon was off-screen, resetting to default position")
-            reopenBtn.Position = UDim2.new(0, 14, 0, 14)
-            if windowObj._uiStore then
-                windowObj._uiStore:Set("reopenPos", { ox = 14, oy = 14 })
+        -- Wait a frame for position to update, then check
+        task.defer(function()
+            local pos = reopenBtn.AbsolutePosition
+            local scr = screenGui.AbsoluteSize
+            local btn = reopenBtn.AbsoluteSize
+            
+            print("After minimize - Screen size:", scr.X, scr.Y, "Icon size:", btn.X, btn.Y, "Icon pos:", pos.X, pos.Y)
+            
+            -- If still off-screen, force it to a different position
+            if pos.Y < 0 or pos.X < 0 or pos.X >= scr.X or pos.Y >= scr.Y then
+                print("Still off-screen after reset, trying alternative position")
+                reopenBtn.Position = UDim2.new(0, 50, 0, 50)
             end
-        else
-            ensureReopenVisible()
-        end
+            
+            -- Save the corrected position
+            if windowObj._uiStore then
+                local finalPos = reopenBtn.AbsolutePosition
+                windowObj._uiStore:Set("reopenPos", { ox = finalPos.X, oy = finalPos.Y })
+                print("Saved corrected position:", finalPos.X, finalPos.Y)
+            end
+        end)
         
         print("Minimized - Reopen icon position:", reopenBtn.AbsolutePosition, "Visible:", reopenBtn.Visible)
     end)
