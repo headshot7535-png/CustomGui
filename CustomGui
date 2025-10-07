@@ -532,6 +532,10 @@ function CustomGui:CreateWindow(props)
             windowObj._uiStore:Set("reopenPos", { ox = pos.X, oy = pos.Y })
         end
         local rPending = false
+        local rHoldTime = 0
+        local rHoldStart = 0
+        local rHoldConnection = nil
+        
         reopenBtn.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 rDragging = false
@@ -539,6 +543,14 @@ function CustomGui:CreateWindow(props)
                 rDragStart = input.Position
                 rStartPos = reopenBtn.AbsolutePosition
                 movedMag = 0
+                rHoldTime = 0
+                rHoldStart = tick()
+                
+                -- Start a hold timer for emulator compatibility
+                if rHoldConnection then rHoldConnection:Disconnect() end
+                rHoldConnection = RunService.Heartbeat:Connect(function()
+                    rHoldTime = tick() - rHoldStart
+                end)
             end
         end)
 
@@ -549,10 +561,11 @@ function CustomGui:CreateWindow(props)
                 local delta = Vector2.new(input.Position.X - rDragStart.X, input.Position.Y - rDragStart.Y)
                 movedMag = math.max(movedMag, delta.Magnitude)
                 
-                -- Start dragging if we've moved enough
-                if rPending and movedMag > 15 then
+                -- Start dragging if we've moved enough OR held for long enough (emulator-friendly)
+                if rPending and (movedMag > 35 or rHoldTime > 0.5) then
                     rDragging = true
                     rPending = false
+                    if rHoldConnection then rHoldConnection:Disconnect(); rHoldConnection = nil end
                 end
                 
                 -- Only move if actively dragging
@@ -562,12 +575,19 @@ function CustomGui:CreateWindow(props)
                 end
             end
         end)
+        
         local function finishIconDragOrClick()
             if not (rDragging or rPending) then return end
             local wasDragging = rDragging
+            local wasHeld = rHoldTime > 0.5
+            
+            -- Clean up hold timer
+            if rHoldConnection then rHoldConnection:Disconnect(); rHoldConnection = nil end
+            
             rDragging = false
             rPending = false
-            if wasDragging and movedMag > 25 then
+            
+            if wasDragging and (movedMag > 45 or wasHeld) then
                 -- Save position without clamping - allow anywhere
                 saveReopenPos()
                 -- Make absolutely sure it's visible
