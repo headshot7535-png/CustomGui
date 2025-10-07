@@ -1675,6 +1675,9 @@ do
         print("Found " .. #found .. " elements:")
         print("")
         
+        -- Add to in-GUI console
+        CustomGui:_addConsoleEntry(win, "GUISearch", string.format("Found %d elements", #found), Color3.fromRGB(100, 255, 150))
+        
         for i, item in ipairs(found) do
             print("Result #" .. i .. ":")
             print("  Text: '" .. item.text .. "'")
@@ -1686,6 +1689,10 @@ do
                 print("  -> Use 'Click Result #" .. i .. "' button to click this")
             end
             print("")
+            
+            -- Add detailed entry to console
+            local consoleMsg = string.format("#%d: '%s' (%s) - %s", i, item.text, item.type, item.clickable and "Clickable" or "View Only")
+            CustomGui:_addConsoleEntry(win, "GUISearch", consoleMsg, Color3.fromRGB(150, 255, 150))
         end
         
         print("=== END RESULTS ===")
@@ -1729,9 +1736,11 @@ do
         if success then
             Exec.notify("GUI Click", "Clicked: " .. (item.text ~= "" and item.text or item.path), 3)
             print("Successfully clicked element #" .. index .. ": " .. item.text)
+            CustomGui:_addConsoleEntry(win, "Success", string.format("Clicked element #%d: %s", index, item.text), Color3.fromRGB(100, 255, 100))
         else
             Exec.notify("GUI Click", "Failed to click element #" .. index, 3)
             print("Failed to click element #" .. index .. ". The element might not be functional.")
+            CustomGui:_addConsoleEntry(win, "Error", string.format("Failed to click element #%d", index), Color3.fromRGB(255, 100, 100))
         end
     end
     
@@ -1927,11 +1936,13 @@ do
             CustomGui:_startRemoteDetection(win)
             Exec.notify("Remote Detector", "Started monitoring remotes", 3)
             print("Remote detection started - monitoring all RemoteEvents and RemoteFunctions")
+            CustomGui:_addConsoleEntry(win, "Info", "Remote monitoring started", Color3.fromRGB(100, 200, 255))
         else
             -- Stop detecting remotes
             CustomGui:_stopRemoteDetection(win)
             Exec.notify("Remote Detector", "Stopped monitoring remotes", 3)
             print("Remote detection stopped")
+            CustomGui:_addConsoleEntry(win, "Info", "Remote monitoring stopped", Color3.fromRGB(200, 200, 100))
         end
     end
     
@@ -2041,7 +2052,7 @@ do
         -- Log to console if enabled
         local settings = (win._remoteStore and win._remoteStore:Get("settings", {})) or {}
         if settings.logToConsole ~= false then
-            local logText = string.format("📡 [%s] %s (%s) - Count: %d", 
+            local logText = string.format("[%s] %s (%s) - Count: %d", 
                 logEntry.time, logEntry.name, logEntry.type, logEntry.count)
             
             if settings.showArgs and args and #args > 0 then
@@ -2058,6 +2069,23 @@ do
             
             print(logText)
         end
+        
+        -- Add to in-GUI console
+        local consoleMessage = string.format("%s - Count: %d", logEntry.name, logEntry.count)
+        if win._consoleShowArgs and args and #args > 0 then
+            local argStrings = {}
+            for i, arg in ipairs(args) do
+                if i > 3 then
+                    table.insert(argStrings, "...")
+                    break
+                end
+                table.insert(argStrings, tostring(arg))
+            end
+            consoleMessage = consoleMessage .. " | Args: " .. table.concat(argStrings, ", ")
+        end
+        
+        local color = remoteType == "RemoteEvent" and Color3.fromRGB(100, 200, 255) or Color3.fromRGB(255, 150, 100)
+        CustomGui:_addConsoleEntry(win, remoteType, consoleMessage, color)
     end
     
     function CustomGui:_clearRemoteList(win)
@@ -2250,6 +2278,7 @@ do
         print("Use 'Show Remote Details' to analyze specific remotes")
         
         Exec.notify("Remote Browser", string.format("Found %d remotes", #foundRemotes), 4)
+        CustomGui:_addConsoleEntry(win, "Info", string.format("Scanned game: Found %d remotes across %d locations", #foundRemotes, #locations), Color3.fromRGB(150, 200, 255))
     end
     
     function CustomGui:_showRemoteDetails(win)
@@ -2549,12 +2578,337 @@ do
             pcall(function()
                 local filename = string.format("RemoteSpy_%s_%d.txt", os.date("%Y%m%d_%H%M%S"), game.PlaceId)
                 Exec.writefile(filename, fullReport)
-                print("💾 Also saved to file: " .. filename)
+            print("💾 Also saved to file: " .. filename)
+        end)
+    end
+    
+    function CustomGui:_buildConsoleTab(win)
+        local tab = win:MakeTab({ Name = "Console" })
+        
+        -- Create console GUI
+        win._consoleFrame = win._consoleFrame or CustomGui:_createConsole(win)
+        
+        CustomGui:AddLabel(tab, "In-GUI Console - Live Remote & GUI Log")
+        
+        -- Console controls
+        CustomGui:AddToggle(tab, { Name = "Enable Console Logging", Default = true, Callback = function(on)
+            win._consoleEnabled = on
+            if win._consoleFrame then
+                win._consoleFrame.Visible = on
+            end
+        end })
+        
+        CustomGui:AddToggle(tab, { Name = "Auto Scroll", Default = true, Callback = function(on)
+            win._consoleAutoScroll = on
+        end })
+        
+        CustomGui:AddToggle(tab, { Name = "Show Timestamps", Default = true, Callback = function(on)
+            win._consoleShowTime = on
+        end })
+        
+        CustomGui:AddSlider(tab, { Name = "Max Console Lines", Min = 50, Max = 1000, Default = 200, Callback = function(v)
+            win._consoleMaxLines = math.floor(v)
+        end })
+        
+        -- Console actions
+        CustomGui:AddButton(tab, { Name = "Clear Console", Callback = function()
+            CustomGui:_clearConsole(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Copy Console Log", Callback = function()
+            CustomGui:_copyConsoleLog(win)
+        end })
+        
+        CustomGui:AddButton(tab, { Name = "Toggle Console Window", Callback = function()
+            if win._consoleFrame then
+                win._consoleFrame.Visible = not win._consoleFrame.Visible
+            end
+        end })
+        
+        -- Filter options
+        CustomGui:AddLabel(tab, "Console Filters:")
+        
+        CustomGui:AddToggle(tab, { Name = "Show Remote Events", Default = true, Callback = function(on)
+            win._consoleShowRemoteEvents = on
+        end })
+        
+        CustomGui:AddToggle(tab, { Name = "Show Remote Functions", Default = true, Callback = function(on)
+            win._consoleShowRemoteFunctions = on
+        end })
+        
+        CustomGui:AddToggle(tab, { Name = "Show GUI Searches", Default = true, Callback = function(on)
+            win._consoleShowGUISearches = on
+        end })
+        
+        CustomGui:AddToggle(tab, { Name = "Show Arguments", Default = false, Callback = function(on)
+            win._consoleShowArgs = on
+        end })
+        
+        -- Initialize console settings
+        win._consoleEnabled = win._consoleEnabled or true
+        win._consoleAutoScroll = win._consoleAutoScroll or true
+        win._consoleShowTime = win._consoleShowTime or true
+        win._consoleMaxLines = win._consoleMaxLines or 200
+        win._consoleShowRemoteEvents = win._consoleShowRemoteEvents or true
+        win._consoleShowRemoteFunctions = win._consoleShowRemoteFunctions or true
+        win._consoleShowGUISearches = win._consoleShowGUISearches or true
+        win._consoleShowArgs = win._consoleShowArgs or false
+        win._consoleLog = win._consoleLog or {}
+        
+        return tab
+    end
+    
+    function CustomGui:_createConsole(win)
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "CustomGuiConsole"
+        sg.IgnoreGuiInset = true
+        sg.ResetOnSpawn = false
+        sg.DisplayOrder = 999999
+        pcall(function() if Exec.protect_gui then Exec.protect_gui(sg) end end)
+        sg.Parent = choose_ui_parent()
+        
+        -- Main console frame
+        local frame = Instance.new("Frame")
+        frame.Name = "ConsoleFrame"
+        frame.Size = UDim2.new(0, 600, 0, 400)
+        frame.Position = UDim2.new(1, -620, 0, 20) -- Top right corner
+        frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        frame.BorderSizePixel = 0
+        frame.Parent = sg
+        frame.Active = true
+        
+        local frameCorner = Instance.new("UICorner")
+        frameCorner.CornerRadius = UDim.new(0, 8)
+        frameCorner.Parent = frame
+        
+        -- Title bar
+        local titleBar = Instance.new("Frame")
+        titleBar.Name = "TitleBar"
+        titleBar.Size = UDim2.new(1, 0, 0, 30)
+        titleBar.Position = UDim2.new(0, 0, 0, 0)
+        titleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        titleBar.Parent = frame
+        
+        local titleCorner = Instance.new("UICorner")
+        titleCorner.CornerRadius = UDim.new(0, 8)
+        titleCorner.Parent = titleBar
+        
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, -60, 1, 0)
+        title.Position = UDim2.new(0, 5, 0, 0)
+        title.BackgroundTransparency = 1
+        title.Text = "🕵️ Remote Console"
+        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 14
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Parent = titleBar
+        
+        -- Close button
+        local closeBtn = Instance.new("TextButton")
+        closeBtn.Size = UDim2.new(0, 25, 0, 25)
+        closeBtn.Position = UDim2.new(1, -30, 0, 2.5)
+        closeBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+        closeBtn.Text = "×"
+        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        closeBtn.Font = Enum.Font.GothamBold
+        closeBtn.TextSize = 16
+        closeBtn.Parent = titleBar
+        
+        local closeBtnCorner = Instance.new("UICorner")
+        closeBtnCorner.CornerRadius = UDim.new(0, 4)
+        closeBtnCorner.Parent = closeBtn
+        
+        closeBtn.MouseButton1Click:Connect(function()
+            frame.Visible = false
+        end)
+        
+        -- Console content area
+        local contentFrame = Instance.new("ScrollingFrame")
+        contentFrame.Name = "Content"
+        contentFrame.Size = UDim2.new(1, -10, 1, -40)
+        contentFrame.Position = UDim2.new(0, 5, 0, 35)
+        contentFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        contentFrame.BorderSizePixel = 0
+        contentFrame.ScrollBarThickness = 8
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        contentFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+        contentFrame.Parent = frame
+        
+        local contentCorner = Instance.new("UICorner")
+        contentCorner.CornerRadius = UDim.new(0, 4)
+        contentCorner.Parent = contentFrame
+        
+        -- Layout for console entries
+        local layout = Instance.new("UIListLayout")
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 2)
+        layout.Parent = contentFrame
+        
+        -- Make draggable
+        local dragging = false
+        local dragStart = nil
+        local startPos = nil
+        
+        titleBar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = frame.Position
+            end
+        end)
+        
+        titleBar.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = input.Position - dragStart
+                frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+        
+        titleBar.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+        
+        win._consoleFrame = frame
+        win._consoleContent = contentFrame
+        win._consoleLayout = layout
+        
+        return frame
+    end
+    
+    function CustomGui:_addConsoleEntry(win, entryType, message, color)
+        if not win._consoleEnabled or not win._consoleContent then return end
+        
+        -- Filter based on settings
+        if entryType == "RemoteEvent" and not win._consoleShowRemoteEvents then return end
+        if entryType == "RemoteFunction" and not win._consoleShowRemoteFunctions then return end
+        if entryType == "GUISearch" and not win._consoleShowGUISearches then return end
+        
+        win._consoleLog = win._consoleLog or {}
+        
+        -- Create console entry
+        local entry = Instance.new("Frame")
+        entry.Size = UDim2.new(1, -10, 0, 0)
+        entry.BackgroundTransparency = 1
+        entry.AutomaticSize = Enum.AutomaticSize.Y
+        entry.LayoutOrder = #win._consoleLog + 1
+        entry.Parent = win._consoleContent
+        
+        local entryLayout = Instance.new("UIListLayout")
+        entryLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        entryLayout.Padding = UDim.new(0, 2)
+        entryLayout.Parent = entry
+        
+        -- Timestamp
+        if win._consoleShowTime then
+            local timeLabel = Instance.new("TextLabel")
+            timeLabel.Size = UDim2.new(1, 0, 0, 16)
+            timeLabel.BackgroundTransparency = 1
+            timeLabel.Text = "[" .. os.date("%H:%M:%S") .. "]"
+            timeLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+            timeLabel.Font = Enum.Font.RobotoMono
+            timeLabel.TextSize = 12
+            timeLabel.TextXAlignment = Enum.TextXAlignment.Left
+            timeLabel.LayoutOrder = 1
+            timeLabel.Parent = entry
+        end
+        
+        -- Entry type icon
+        local typeIcon = "📡"
+        if entryType == "RemoteFunction" then typeIcon = "🔧"
+        elseif entryType == "GUISearch" then typeIcon = "�"
+        elseif entryType == "Info" then typeIcon = "ℹ️"
+        elseif entryType == "Warning" then typeIcon = "⚠️"
+        elseif entryType == "Error" then typeIcon = "❌"
+        elseif entryType == "Success" then typeIcon = "✅"
+        end
+        
+        -- Main message
+        local messageLabel = Instance.new("TextLabel")
+        messageLabel.Size = UDim2.new(1, 0, 0, 0)
+        messageLabel.BackgroundTransparency = 1
+        messageLabel.Text = typeIcon .. " " .. message
+        messageLabel.TextColor3 = color or Color3.fromRGB(255, 255, 255)
+        messageLabel.Font = Enum.Font.RobotoMono
+        messageLabel.TextSize = 13
+        messageLabel.TextXAlignment = Enum.TextXAlignment.Left
+        messageLabel.TextWrapped = true
+        messageLabel.AutomaticSize = Enum.AutomaticSize.Y
+        messageLabel.LayoutOrder = 2
+        messageLabel.Parent = entry
+        
+        -- Add separator line
+        local separator = Instance.new("Frame")
+        separator.Size = UDim2.new(1, 0, 0, 1)
+        separator.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        separator.BorderSizePixel = 0
+        separator.LayoutOrder = 3
+        separator.Parent = entry
+        
+        -- Store entry
+        table.insert(win._consoleLog, {
+            type = entryType,
+            message = message,
+            time = os.date("%H:%M:%S"),
+            frame = entry
+        })
+        
+        -- Limit entries
+        while #win._consoleLog > (win._consoleMaxLines or 200) do
+            local oldEntry = table.remove(win._consoleLog, 1)
+            if oldEntry.frame and oldEntry.frame.Parent then
+                oldEntry.frame:Destroy()
+            end
+        end
+        
+        -- Auto scroll to bottom
+        if win._consoleAutoScroll then
+            task.defer(function()
+                win._consoleContent.CanvasPosition = Vector2.new(0, win._consoleContent.AbsoluteCanvasSize.Y)
             end)
         end
     end
-
-    function CustomGui:_toggleESP(win)
+    
+    function CustomGui:_clearConsole(win)
+        win._consoleLog = {}
+        if win._consoleContent then
+            for _, child in ipairs(win._consoleContent:GetChildren()) do
+                if child:IsA("Frame") and child.Name ~= "UIListLayout" then
+                    child:Destroy()
+                end
+            end
+        end
+        CustomGui:_addConsoleEntry(win, "Info", "Console cleared", Color3.fromRGB(100, 200, 100))
+    end
+    
+    function CustomGui:_copyConsoleLog(win)
+        if not win._consoleLog or #win._consoleLog == 0 then
+            CustomGui:_addConsoleEntry(win, "Warning", "No console entries to copy", Color3.fromRGB(255, 200, 0))
+            return
+        end
+        
+        local lines = {}
+        for _, entry in ipairs(win._consoleLog) do
+            table.insert(lines, string.format("[%s] %s: %s", entry.time, entry.type, entry.message))
+        end
+        
+        local logText = table.concat(lines, "\n")
+        
+        if Exec.setclipboard then
+            pcall(function()
+                Exec.setclipboard(logText)
+                CustomGui:_addConsoleEntry(win, "Success", "Console log copied to clipboard (" .. #lines .. " entries)", Color3.fromRGB(100, 255, 100))
+            end)
+        else
+            CustomGui:_addConsoleEntry(win, "Info", "Console log printed to output (" .. #lines .. " entries)", Color3.fromRGB(100, 200, 255))
+            print("=== CONSOLE LOG ===")
+            print(logText)
+            print("=== END LOG ===")
+        end
+    end    function CustomGui:_toggleESP(win)
         local any = (win._esp and (win._esp.names or win._esp.highlight or win._esp.tracers)) and true or false
         if any and not win._espLoop then
             win._espData = win._espData or {}
@@ -2869,6 +3223,10 @@ do
     
     function CustomGui:BuildRemoteDetectorTab(win)
         return CustomGui:_buildRemoteDetectorTab(win)
+    end
+    
+    function CustomGui:BuildConsoleTab(win)
+        return CustomGui:_buildConsoleTab(win)
     end
 
     function CustomGui:SetTheme(win, name)
