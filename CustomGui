@@ -597,8 +597,14 @@ function CustomGui:CreateWindow(props)
         
         local function saveReopenPos()
             if not windowObj._uiStore then return end
+            
+            -- Ensure icon is at least partially visible before saving
+            ensureReopenVisible()
+            
             local pos = reopenBtn.AbsolutePosition
-            -- Save raw pixel offsets for exact placement (no clamping)
+            print("Saving reopen position:", pos.X, pos.Y)
+            
+            -- Save the corrected position
             windowObj._uiStore:Set("reopenPos", { ox = pos.X, oy = pos.Y })
         end
         
@@ -608,6 +614,12 @@ function CustomGui:CreateWindow(props)
             rDragStart = input.Position
             rStartPos = reopenBtn.AbsolutePosition
             rMovedMag = 0
+            
+            print("Begin drag - Start position:", rStartPos)
+            
+            -- Ensure icon is visible when starting drag
+            reopenBtn.Visible = true
+            
             if input.UserInputType == Enum.UserInputType.Touch then
                 rDragInput = input
             else
@@ -621,7 +633,13 @@ function CustomGui:CreateWindow(props)
                 rDragging = false
                 rPending = false
                 if wasDragging then
+                    print("Ending drag - Icon position before save:", reopenBtn.AbsolutePosition)
+                    
+                    -- Force visibility and save position
+                    reopenBtn.Visible = true
                     saveReopenPos()
+                    
+                    print("Ending drag - Icon position after save:", reopenBtn.AbsolutePosition, "Visible:", reopenBtn.Visible)
                 else
                     -- Was just a click - open the main window
                     mainFrame.Visible = true
@@ -648,12 +666,19 @@ function CustomGui:CreateWindow(props)
                 rMovedMag = math.max(rMovedMag, delta.Magnitude)
                 local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
                 reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
+                
+                -- Ensure visibility during drag
+                reopenBtn.Visible = true
+                
             elseif input.UserInputType == Enum.UserInputType.Touch then
                 if (rDragInput == nil) or (input == rDragInput) then
                     local delta = input.Position - rDragStart
                     rMovedMag = math.max(rMovedMag, delta.Magnitude)
                     local newAbs = Vector2.new(rStartPos.X + delta.X, rStartPos.Y + delta.Y)
                     reopenBtn.Position = UDim2.new(0, newAbs.X, 0, newAbs.Y)
+                    
+                    -- Ensure visibility during drag
+                    reopenBtn.Visible = true
                 end
             end
         end
