@@ -21,6 +21,12 @@ local CustomGui = {
     }
 }
 
+CustomGui.VersionMarker = string.format(
+    "CustomGui/%s (%s)",
+    CustomGui.Version or "unknown",
+    CustomGui.VersionDate or "undated"
+)
+
 -- Services and shared locals
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -161,6 +167,7 @@ function CustomGui:GetVersion()
     return {
         version = self.Version,
         date = self.VersionDate,
+        marker = self.VersionMarker,
         features = self.Features
     }
 end
@@ -169,6 +176,7 @@ function CustomGui:PrintVersion()
     print("=== CUSTOMGUI VERSION INFO ===")
     print("Version: " .. (self.Version or "Unknown"))
     print("Date: " .. (self.VersionDate or "Unknown"))
+    print("Marker: " .. (self.VersionMarker or "Unavailable"))
     print("Features:")
     for i, feature in ipairs(self.Features or {}) do
         print("  " .. i .. ". " .. feature)
