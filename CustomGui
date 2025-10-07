@@ -3,7 +3,23 @@
 -- task manager (Stop All), per-game settings, teleport re-exec, and richer controls.
 -- Usage: local Gui = require(path_to_CustomGui)
 
-local CustomGui = {}
+local CustomGui = {
+    -- Version information
+    Version = "2.1.0",
+    VersionDate = "2025-10-06",
+    Features = {
+        "Advanced Remote Detector with hooking and statistics",
+        "GUI Finder with search and click functionality", 
+        "In-GUI Console with SimpleSpy-style interface",
+        "Complete Utilities tab (ESP, noclip, click TP, etc.)",
+        "Mobile-friendly drag mechanics with pixel positioning",
+        "Anti-AFK with visual indicator",
+        "Per-user/per-game persistent settings",
+        "Theme system (Carbon, Midnight, Pastel)",
+        "Task management with Stop All functionality",
+        "Builder functions for easy tab creation"
+    }
+}
 
 -- Services and shared locals
 local Players = game:GetService("Players")
@@ -138,6 +154,26 @@ local function json_decode(str)
     if type(str) ~= "string" then return nil end
     local ok, res = pcall(function() return HttpService:JSONDecode(str) end)
     return ok and res or nil
+end
+
+-- Version check and display function
+function CustomGui:GetVersion()
+    return {
+        version = self.Version,
+        date = self.VersionDate,
+        features = self.Features
+    }
+end
+
+function CustomGui:PrintVersion()
+    print("=== CUSTOMGUI VERSION INFO ===")
+    print("Version: " .. (self.Version or "Unknown"))
+    print("Date: " .. (self.VersionDate or "Unknown"))
+    print("Features:")
+    for i, feature in ipairs(self.Features or {}) do
+        print("  " .. i .. ". " .. feature)
+    end
+    print("=== END VERSION INFO ===")
 end
 
 -- UI parent selection (CoreGui/gethui preferred for exploit stability)
