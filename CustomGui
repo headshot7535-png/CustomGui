@@ -162,6 +162,31 @@ local function json_decode(str)
     return ok and res or nil
 end
 
+-- Console stubs (guarantee presence even on trimmed builds)
+-- These will be overwritten later by full implementations when available.
+if type(CustomGui._addConsoleEntry) ~= "function" then
+    function CustomGui:_addConsoleEntry(win, entryType, message, color)
+        local prefix = entryType and ("["..tostring(entryType).."] ") or ""
+        if message then pcall(function() print(prefix .. tostring(message)) end) end
+    end
+end
+if type(CustomGui._createConsole) ~= "function" then
+    function CustomGui:_createConsole(win)
+        -- No-op placeholder when console UI is not packaged
+        return nil
+    end
+end
+if type(CustomGui._clearConsole) ~= "function" then
+    function CustomGui:_clearConsole(win)
+        -- No-op placeholder
+    end
+end
+if type(CustomGui._copyConsoleLog) ~= "function" then
+    function CustomGui:_copyConsoleLog(win)
+        -- No-op placeholder
+    end
+end
+
 -- Version check and display function
 function CustomGui:GetVersion()
     return {
