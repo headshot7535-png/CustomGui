@@ -307,6 +307,15 @@ function CustomGui:CreateWindow(props)
                 mainFrame.Visible = true
                 reopenBtn.Visible = false
             end
+        elseif input.KeyCode == Enum.KeyCode.F3 then
+            -- F3: Emergency reset reopen icon position
+            reopenBtn.Position = UDim2.new(0, 14, 0, 14)
+            reopenBtn.Visible = true
+            if windowObj._uiStore then
+                windowObj._uiStore:Set("reopenPos", { ox = 14, oy = 14 })
+            end
+            Exec.notify("Icon Reset", "Reopen icon moved to top-left", 3)
+            print("F3: Reset reopen icon to position (14, 14)")
         end
     end)
 
@@ -538,9 +547,12 @@ function CustomGui:CreateWindow(props)
         screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applySavedWindowPos)
         local function applySavedReopenPos()
             local saved = windowObj._uiStore and windowObj._uiStore:Get("reopenPos")
+            local positioned = false
+            
             if type(saved) == "table" then
                 if typeof(saved.ox) == "number" and typeof(saved.oy) == "number" then
                     reopenBtn.Position = UDim2.new(0, saved.ox, 0, saved.oy)
+                    positioned = true
                 elseif typeof(saved.sx) == "number" and typeof(saved.sy) == "number" then
                     -- Backward compatible with older normalized positions
                     local scr = screenGui.AbsoluteSize
@@ -548,9 +560,32 @@ function CustomGui:CreateWindow(props)
                     local x = saved.sx * math.max(0, scr.X - btn.X)
                     local y = saved.sy * math.max(0, scr.Y - btn.Y)
                     reopenBtn.Position = UDim2.new(0, math.floor(x + 0.5), 0, math.floor(y + 0.5))
+                    positioned = true
                 end
             end
+            
+            -- If no saved position or position seems invalid, use default
+            if not positioned then
+                reopenBtn.Position = UDim2.new(0, 14, 0, 14)
+                print("Reset reopen icon to default position (14, 14)")
+            end
+            
             ensureReopenVisible()
+            
+            -- Failsafe: if still not visible after positioning, force to default
+            task.defer(function()
+                local pos = reopenBtn.AbsolutePosition
+                local scr = screenGui.AbsoluteSize
+                local btn = reopenBtn.AbsoluteSize
+                
+                if pos.X + btn.X <= 0 or pos.Y + btn.Y <= 0 or pos.X >= scr.X or pos.Y >= scr.Y then
+                    print("Icon was completely off-screen, forcing to default position")
+                    reopenBtn.Position = UDim2.new(0, 14, 0, 14)
+                    if windowObj._uiStore then
+                        windowObj._uiStore:Set("reopenPos", { ox = 14, oy = 14 })
+                    end
+                end
+            end)
         end
         task.defer(applySavedReopenPos)
         screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applySavedReopenPos)
@@ -681,13 +716,23 @@ function CustomGui:CreateWindow(props)
         
         -- Force the reopen button to be visible and ensure it's on screen
         reopenBtn.Visible = true
-        ensureReopenVisible()
         
-        -- Double-check visibility after a short delay (for any rendering issues)
-        task.wait(0.1)
-        reopenBtn.Visible = true
+        -- Check if icon is saved off-screen and reset if needed
+        local pos = reopenBtn.AbsolutePosition
+        local scr = screenGui.AbsoluteSize
+        local btn = reopenBtn.AbsoluteSize
         
-        print("Minimized - Reopen icon position:", reopenBtn.AbsolutePosition)
+        if pos.X + btn.X <= 0 or pos.Y + btn.Y <= 0 or pos.X >= scr.X or pos.Y >= scr.Y then
+            print("Icon was off-screen, resetting to default position")
+            reopenBtn.Position = UDim2.new(0, 14, 0, 14)
+            if windowObj._uiStore then
+                windowObj._uiStore:Set("reopenPos", { ox = 14, oy = 14 })
+            end
+        else
+            ensureReopenVisible()
+        end
+        
+        print("Minimized - Reopen icon position:", reopenBtn.AbsolutePosition, "Visible:", reopenBtn.Visible)
     end)
     -- MouseButton1Click is handled in InputEnded above to avoid triggering when dragging
 
